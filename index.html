@@ -1,0 +1,1025 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Letterloper</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@400;700;900&display=swap">
+<style>
+/* Layout: one column arcade cabinet — HUD strip, 16:9 screen, keyboard panel underneath. Single committed dark arcade look. */
+:root{
+  --bg:#141833; --panel:#1f2448; --panel2:#2a3060; --line:#3b4380;
+  --fg:#fff6e3; --muted:#a9b0dc; --accent:#ffcc3d; --accent2:#4fd1ff;
+  --good:#5be37d; --bad:#ff5f6d;
+  --f-pink:#ff7eb6; --f-ring:#ffa94d; --f-mid:#ffe066; --f-index:#69db7c; --f-thumb:#b197fc;
+  --display:'Fredoka','Nunito',system-ui,sans-serif; --body:'Nunito',system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px 24px;
+  -webkit-user-select:none;user-select:none}
+#app{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:10px;transform-origin:top center}
+.hud{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:8px 14px;font-family:var(--display)}
+.hud .logo{font-weight:700;font-size:1.35rem;color:var(--accent);letter-spacing:.5px;text-shadow:2px 2px 0 #7a4b00}
+.hud .logo small{display:block;font-size:.65rem;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase;text-shadow:none}
+.stat{display:flex;flex-direction:column;line-height:1.05;min-width:58px}
+.stat b{font-size:1.25rem;font-variant-numeric:tabular-nums}
+.stat span{font-size:.65rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.hud .spacer{flex:1}
+.tempo{width:110px;height:12px;background:#0d1028;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.tempo i{display:block;height:100%;background:linear-gradient(90deg,#4fd1ff,#ffcc3d,#ff5f6d);width:20%;transition:width .4s}
+button{font-family:var(--display);font-weight:700;font-size:1.05rem;border:0;border-radius:12px;padding:10px 20px;cursor:pointer;background:var(--accent);color:#2b1d00;box-shadow:0 4px 0 #a67700;transition:transform .08s}
+button:hover{transform:translateY(-1px)}button:active{transform:translateY(2px);box-shadow:0 2px 0 #a67700}
+button.ghost{background:var(--panel2);color:var(--fg);box-shadow:0 4px 0 #11143a}
+button.ghost:active{box-shadow:0 2px 0 #11143a}
+button:focus-visible{outline:3px solid var(--accent2);outline-offset:2px}
+.icon{padding:8px 12px;font-size:1rem;min-width:44px}
+
+.stage{position:relative;width:100%;aspect-ratio:16/9;max-width:100%;border-radius:16px;overflow:hidden;border:3px solid var(--line);background:#000;box-shadow:0 10px 40px #0008}
+canvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges}
+#promptbar{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:#0d1028ee;border:2px solid var(--line);border-radius:14px;padding:8px 18px 6px;text-align:center;min-width:180px;max-width:92%;pointer-events:none;transition:border-color .15s}
+#promptbar.err{border-color:var(--bad);animation:shake .25s}
+#promptbar .txt{font-family:var(--display);font-size:clamp(1.4rem,4vw,2.4rem);letter-spacing:.08em;white-space:pre;font-weight:600;line-height:1.1}
+#promptbar .done{color:var(--good)}
+#promptbar .cur{color:#1a1200;background:var(--accent);border-radius:6px;padding:0 .12em;box-shadow:0 0 14px var(--accent)}
+#promptbar .rest{color:var(--fg);opacity:.85}
+#promptbar .sp{display:inline-block;width:.6em;border-bottom:3px solid currentColor;height:.9em;vertical-align:baseline;margin:0 .05em}
+#promptbar .cur.sp{background:var(--accent);border-bottom-color:#1a1200}
+#promptbar .hint{font-size:.78rem;color:var(--muted);margin-top:2px;display:flex;gap:6px;align-items:center;justify-content:center}
+#promptbar .hint i{width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--muted)}
+@keyframes shake{0%,100%{transform:translateX(-50%)}25%{transform:translateX(calc(-50% - 6px))}75%{transform:translateX(calc(-50% + 6px))}}
+/* Meldingen linksonder (weg van de opdracht en van de rechterkant waar alles binnenkomt); tips direct onder de opdracht. */
+#toasts{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column-reverse;gap:6px;pointer-events:none;align-items:flex-start;max-width:38%}
+.toast{background:#0d1028dd;border:2px solid var(--accent);color:var(--fg);border-radius:10px;padding:4px 10px;font-family:var(--display);font-weight:600;font-size:.85rem;animation:toastin .3s ease-out;text-align:left}
+.toast.badge{border-color:var(--accent2)}
+#tipbar{position:absolute;left:50%;top:92px;transform:translateX(-50%);max-width:70%;pointer-events:none;display:flex;justify-content:center}
+.toast.tip{border-color:var(--f-pink);font-family:var(--body);font-weight:700;font-size:.9rem;text-align:center;animation:tipin .25s ease-out}
+.toast.tip::before{content:"Tip: ";color:var(--f-pink)}
+@keyframes toastin{from{transform:translateX(-30px);opacity:0}to{transform:none;opacity:1}}
+@keyframes tipin{from{transform:translateY(-10px);opacity:0}to{transform:none;opacity:1}}
+
+#overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0e24cc;backdrop-filter:blur(3px);padding:16px}
+#overlay[hidden]{display:none!important}
+.card{background:var(--panel);border:3px solid var(--line);border-radius:18px;padding:22px 26px;max-width:580px;width:100%;text-align:center;max-height:100%;overflow:auto}
+.card h1{font-family:var(--display);font-size:clamp(1.8rem,5vw,2.8rem);margin:0 0 4px;color:var(--accent);text-shadow:3px 3px 0 #7a4b00;text-wrap:balance}
+.card h2{font-family:var(--display);font-size:1.5rem;margin:0 0 8px;text-wrap:balance}
+.card p{margin:6px 0;color:var(--muted);line-height:1.45}
+.card p.lead{color:var(--fg);font-size:1.05rem}
+.row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+.profiles{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:14px 0}
+.profiles button{display:flex;align-items:center;gap:10px;background:var(--panel2);color:var(--fg);box-shadow:0 4px 0 #11143a}
+.profiles button .dot{width:18px;height:18px;border-radius:5px;display:inline-block}
+.profiles button small{display:block;font-weight:400;font-size:.7rem;color:var(--muted);text-align:left}
+.newprof{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:center;margin-top:8px}
+.newprof input{font-family:var(--display);font-size:1.05rem;padding:9px 12px;border-radius:10px;border:2px solid var(--line);background:#0d1028;color:var(--fg);width:170px}
+.newprof input:focus{outline:2px solid var(--accent2)}
+.swatches{display:flex;gap:6px}
+.sw{width:28px;height:28px;border-radius:8px;border:3px solid transparent;cursor:pointer}
+.sw.on{border-color:#fff}
+.games{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:14px 0}
+.game{background:var(--panel2);border:3px solid var(--line);border-radius:14px;padding:14px;cursor:pointer;text-align:left;color:var(--fg);box-shadow:0 4px 0 #11143a;font-family:var(--body);font-weight:400;font-size:.9rem}
+.game:hover{border-color:var(--accent)}
+.game b{display:block;font-family:var(--display);font-size:1.3rem;color:var(--accent);margin-bottom:4px}
+.game .pv{height:70px;border-radius:8px;margin-bottom:8px;background:linear-gradient(#5ec8ff 60%,#4cc24a 60% 70%,#8b5a2b 70%)}
+.game .pv.house{background:linear-gradient(#ffd9e6 0 55%,#c98b5a 55% 62%,#f7c9a6 62%)}
+.game .pv.space{background:radial-gradient(circle at 70% 40%,#6a2a7a55,transparent 50%),radial-gradient(circle at 20% 70%,#2a3a8a66,transparent 45%),linear-gradient(#05070f,#0d1430)}
+.games{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:14px 0}
+.stats div{background:#0d1028;border-radius:10px;padding:8px}
+.stats b{display:block;font-family:var(--display);font-size:1.4rem;color:var(--accent);font-variant-numeric:tabular-nums}
+.stats span{font-size:.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.bigkeys{display:flex;gap:12px;justify-content:center;margin:12px 0}
+.bigkey{width:64px;height:64px;border-radius:12px;background:#fff;color:#111;font-family:var(--display);font-weight:700;font-size:2rem;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 0 #999;border-bottom:4px solid var(--kc,#ccc)}
+.practice{display:flex;flex-direction:column;align-items:center;gap:10px;margin:10px 0}
+.practice .big{width:120px;height:120px;border-radius:22px;background:#fff;color:#111;font-family:var(--display);font-weight:700;font-size:4.2rem;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 0 #999;border-bottom:8px solid var(--kc,#ccc);transition:transform .1s}
+.practice .big.ok{transform:scale(1.12);background:var(--good)}
+.practice .big.bad{animation:shake2 .25s;background:var(--bad);color:#fff}
+.practice .big.sp{font-size:1.4rem}
+@keyframes shake2{0%,100%{transform:none}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.practice .dots{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.practice .dots i{width:14px;height:14px;border-radius:50%;background:#0d1028;border:2px solid var(--line)}
+.practice .dots i.on{background:var(--good);border-color:var(--good)}
+.practice .dots i.cur{border-color:var(--accent);box-shadow:0 0 8px var(--accent)}
+.practice .fing{font-family:var(--display);font-size:1.1rem;display:flex;gap:8px;align-items:center}
+.practice .fing i{width:14px;height:14px;border-radius:50%;display:inline-block}
+.levels{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+.levels button{background:var(--panel2);color:var(--fg);box-shadow:0 4px 0 #11143a;font-size:.9rem;padding:8px 14px}
+.levels button.on{background:var(--accent);color:#2b1d00;box-shadow:0 4px 0 #a67700}
+.card.wide{max-width:720px}
+.heat{display:flex;flex-direction:column;gap:5px;align-items:center;margin:12px 0}
+.heat .hrow{display:flex;gap:5px}
+.heat .hk{width:clamp(30px,5.6vw,52px);height:clamp(34px,5.6vw,52px);border-radius:7px;background:var(--hc,#2a3060);color:#111;font-family:var(--display);font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;font-size:1rem;border:2px solid #0d1028}
+.heat .hk small{font-size:.58rem;font-weight:600;opacity:.8}
+.heat .hk.na{background:#2a3060;color:var(--muted)}
+.heat .hk.space{width:clamp(150px,30vw,300px)}
+.heatlegend{display:flex;gap:4px;align-items:center;justify-content:center;font-size:.72rem;color:var(--muted)}
+.heatlegend i{width:60px;height:10px;border-radius:5px;background:linear-gradient(90deg,#ff5f6d,#ffcc3d,#5be37d)}
+.lists{display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;margin-top:10px}
+.lists div{background:#0d1028;border-radius:10px;padding:10px 12px;font-size:.85rem}
+.lists h3{margin:0 0 6px;font-family:var(--display);font-size:1rem}
+.lists ul{margin:0;padding-left:18px;color:var(--muted)}
+.lists b{color:var(--fg);font-family:var(--display)}
+@media (max-width:520px){.lists{grid-template-columns:1fr}}
+.vols{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:8px 0;font-size:.85rem;color:var(--muted)}
+.vols input{vertical-align:middle;accent-color:var(--accent);width:120px}
+.badgelist{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px}
+.badgelist span{background:#0d1028;border:1px solid var(--accent2);border-radius:999px;padding:3px 10px;font-size:.8rem}
+
+.bottom{background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+.unlock{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.9rem}
+.unlock b{font-family:var(--display);color:var(--accent)}
+.bar{flex:1;min-width:120px;height:14px;background:#0d1028;border-radius:7px;overflow:hidden;border:1px solid var(--line)}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),var(--good));width:0;transition:width .3s}
+#kb{display:flex;flex-direction:column;gap:5px;align-items:center;position:relative;padding-bottom:clamp(70px,10vw,120px)}
+#hands{position:absolute;inset:0;pointer-events:none;overflow:visible}
+#hands.off{display:none}
+#hands{opacity:.9}
+#hands .palm{fill:#f1c9ad;stroke:#b9825f;stroke-width:2.5;stroke-linejoin:round}
+#hands .shade{fill:#e2ad8c;opacity:.45}
+#hands .fo{fill:none;stroke:#b9825f;stroke-linecap:round}
+#hands .ff{fill:none;stroke:#f1c9ad;stroke-linecap:round}
+#hands .fb{fill:none;stroke:#f1c9ad;stroke-linecap:round}
+#hands .tip{stroke:#fff;stroke-width:2}
+.krow{display:flex;gap:5px;justify-content:center}
+.key{width:clamp(26px,4.4vw,46px);height:clamp(28px,4.4vw,44px);border-radius:7px;background:#e9ecff;color:#1b1f3a;font-family:var(--display);font-weight:600;font-size:clamp(.7rem,1.6vw,1rem);display:flex;align-items:center;justify-content:center;border-bottom:4px solid var(--kc,#aab);box-shadow:0 2px 0 #0004;transition:transform .08s,background .1s;position:relative}
+.key.wide{width:clamp(52px,9vw,92px);font-size:.7rem}
+.key.space{width:clamp(140px,30vw,300px)}
+.key.locked{opacity:.28}
+.key.next{background:var(--accent);transform:translateY(-3px) scale(1.08);box-shadow:0 0 16px var(--accent),0 4px 0 #0004;z-index:1}
+.key.pressed{transform:translateY(2px);border-bottom-width:1px}
+.key.wrong{background:var(--bad);color:#fff}
+.key.bump{position:absolute;top:2px;right:4px;width:5px;height:5px;border-radius:50%;background:#1b1f3a55}
+.legend{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-size:.72rem;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px;background:var(--c)}
+.foot{font-size:.75rem;color:var(--muted);text-align:center}
+.foot kbd{background:#0d1028;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-family:var(--display)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:520px){.hud{gap:8px}.stat{min-width:46px}.stat b{font-size:1rem}.tempo{width:70px}}
+</style>
+
+<div id="app">
+  <header class="hud">
+    <div class="logo" id="logo">Letterloper<small>Typ-avontuur</small></div>
+    <div class="stat"><b id="score">0</b><span>Punten</span></div>
+    <div class="stat"><b id="coins">0</b><span>Munten</span></div>
+    <div class="stat"><b id="combo">0</b><span>Combo</span></div>
+    <div class="stat"><b id="acc">100%</b><span>Goed</span></div>
+    <div class="stat"><b id="world">1</b><span id="worldLbl">Wereld</span></div>
+    <div class="stat"><div class="tempo"><i id="tempo"></i></div><span>Tempo</span></div>
+    <div class="spacer"></div>
+    <button class="ghost icon" id="btnCalm" title="Met of zonder tijd">⏱ met tijd</button>
+    <button class="ghost icon" id="btnMute" title="Geluid aan/uit">♪</button>
+    <button class="ghost icon" id="btnPause" title="Pauze (Esc)">❚❚</button>
+    <button class="ghost icon" id="btnStop" title="Stoppen, naar het hoofdmenu">■ stop</button>
+  </header>
+
+  <div class="stage">
+    <canvas id="cv" width="960" height="540"></canvas>
+    <div id="promptbar" hidden><div class="txt"></div><div class="hint"></div></div>
+    <div id="toasts"></div>
+    <div id="tipbar"></div>
+    <div id="overlay"><div class="card" id="card"></div></div>
+  </div>
+
+  <div class="bottom">
+    <div class="unlock"><span>Volgende toetsen:</span><b id="nextKeys">d en k</b><div class="bar"><i id="mastery"></i></div><span id="stageTxt"></span><span id="goal" style="color:var(--muted)"></span></div>
+    <div id="kb"></div>
+    <div class="legend">
+      <button class="ghost icon" id="btnHands" style="padding:4px 10px;font-size:.75rem">✋ handen aan</button>
+      <span style="--c:var(--f-pink)">pink</span><span style="--c:var(--f-ring)">ringvinger</span><span style="--c:var(--f-mid)">middelvinger</span><span style="--c:var(--f-index)">wijsvinger</span><span style="--c:var(--f-thumb)">duim</span>
+    </div>
+    <div class="foot"><kbd>Esc</kbd> pauze · ⏱ zet de tijd aan of uit · Goed getypt = sneller · Elke fout = het spel wordt even iets rustiger. Je kunt niet af.</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ───────────────────────── Leerstof (typ-didactiek) ─────────────────────────
+// Volgorde: thuisrij van binnen naar buiten, dan bovenrij, dan onderrij,
+// daartussen de spatie zodra woorden mogelijk zijn, hoofdletters en leestekens als laatste.
+const GROUPS=[
+  {keys:'fj',name:'f en j',tip:'Wijsvingers op de bultjes van de f en de j.'},
+  {keys:'dk',name:'d en k',tip:'Middelvingers, naast je wijsvingers.'},
+  {keys:'sl',name:'s en l',tip:'Ringvingers.'},
+  {keys:'a',name:'de a',tip:'Je linker pink.'},
+  {keys:'gh',name:'g en h',tip:'Wijsvingers schuiven één toets naar het midden.'},
+  {keys:'ei',name:'e en i',tip:'Middelvingers reiken omhoog.'},
+  {keys:'ru',name:'r en u',tip:'Wijsvingers omhoog. Nu kun je woorden typen!'},
+  {keys:' ',name:'de spatie',tip:'Druk de spatiebalk met je duim.'},
+  {keys:'ty',name:'t en y',tip:'Wijsvingers schuin omhoog naar het midden.'},
+  {keys:'nm',name:'n en m',tip:'Rechter wijsvinger omlaag.'},
+  {keys:'wo',name:'w en o',tip:'Ringvingers omhoog.'},
+  {keys:'c,',name:'c en komma',tip:'Middelvingers omlaag.'},
+  {keys:'vb',name:'v en b',tip:'Linker wijsvinger omlaag.'},
+  {keys:'x.',name:'x en punt',tip:'Ringvingers omlaag.'},
+  {keys:'pz',name:'p en z',tip:'Pinken: p rechtsboven, z linksonder.'},
+  {keys:'q',name:'de q',tip:'Linker pink omhoog.'},
+  {keys:'',caps:true,name:'hoofdletters',tip:'Houd Shift vast met de pink van je andere hand.'},
+  {keys:'?;',name:'? en ;',tip:'Rechter pink. Het vraagteken is Shift + /.'},
+];
+const WORDS=`de het een en ik jij hij zij wij ze we je me mij ja nee is was ben bent zijn hebben heb heeft had dit dat die deze daar hier er niet wel ook nog al als of maar want dus om op in uit aan af bij naar van voor door over onder tot met zonder toen dan nu ooit altijd nooit vaak soms weer heel erg zo te veel weinig meer minder groot klein lang kort hoog laag dik dun oud jong nieuw mooi lief stout blij boos bang moe ziek warm koud heet nat droog vol leeg open dicht licht donker rood geel groen blauw wit zwart paars roze oranje bruin grijs kat hond poes muis vis vogel kip koe paard schaap geit varken eend beer aap leeuw tijger olifant slang kikker vlinder mier spin konijn haas egel uil zwaan boom bos bloem gras blad tak appel peer banaan druif kers citroen sla ui kaas brood boter melk ei soep rijst koek taart snoep ijs thee sap water huis deur raam dak muur trap kamer bed stoel tafel kast lamp bank tuin hek pad weg straat stad dorp school klas juf meester boek pen stift papier tas jas schoen sok broek rok jurk trui muts sjaal bal fiets auto bus trein boot step zon maan ster wolk regen sneeuw wind storm lucht zee strand zand golf berg dal rivier meer eiland land wereld dag nacht ochtend middag avond week jaar uur tijd mama papa oma opa zus broer oom tante vriend kind baby man vrouw jongen meisje hand voet hoofd neus oog oor mond tand haar buik rug arm been knie teen spel feest ballon kaars lied dans muziek film foto lopen rennen springen zitten staan liggen slapen eten drinken lezen tekenen zingen spelen lachen huilen kijken horen zien ruiken voelen denken weten willen kunnen moeten mogen gaan komen doen maken geven nemen vragen zeggen praten roepen vinden zoeken helpen werken leren vallen vangen gooien duwen trekken bouwen breken wassen koken bakken fietsen zwemmen vliegen varen rijden reizen wachten winnen typen toets letter woord zin punt komma spatie snel goed fout leuk gek raar stil hard zacht zoet zuur zout fijn best super tof das dief lief lies kies dag dak gal gas geel hees hak hal hek jas lag las lek lijf lid slee kiel dis fee geef heg juk kas kil lak lei sas slag slak slik pop beer robot poes thee taart kussen deken lampje bloemen keuken zolder badkamer tuintje`.split(/\s+/);
+// Verhaaltjes voor gevorderden: zin voor zin, in volgorde.
+const STORIES=[
+  ['De wekker gaat om zeven uur.','Mila rekt zich uit en kijkt naar buiten.','Het heeft vannacht gesneeuwd.','Snel trekt ze haar laarzen aan.','De hond springt al bij de deur.','Samen maken ze de eerste sporen in de tuin.'],
+  ['Opa heeft een oude kist op zolder.','Er zit een kaart in, met een kruis erop.','Wij lopen naar het bos achter het dorp.','Bij de dikke eik tellen we tien stappen.','Onder een steen ligt een blikje.','Er zitten foto\'s in van opa als kind.'],
+  ['De ruimtehaven is stil vannacht.','Kapitein Vos checkt de motoren nog een keer.','Over een uur vertrekt het schip naar Mars.','De bemanning drinkt koffie bij het raam.','Niemand zegt iets; iedereen kijkt naar de sterren.','Dan klinkt het signaal: tijd om te gaan.'],
+  ['Elke dinsdag is het markt op het plein.','Je ruikt verse stroopwafels en kaas.','Een man roept dat zijn vis de beste is.','Bij de bloemenkraam kies ik gele tulpen.','Het regent zacht, maar niemand gaat weg.','Met een volle tas fiets ik naar huis.'],
+];
+const SENTENCES=['Ik ben blij.','De kat slaapt.','Wat eet jij?','Kom je mee?','Dat is leuk.','Wij gaan naar zee.','Mama bakt een taart.','De hond rent hard.','Zie je de maan?','Ja, dat wil ik.','Nee, dank je.','Het is koud, hoor.','Opa leest een boek.','Pas op, een slak.','Hoe laat is het?','Ik hou van ijs.','De zon schijnt.','Kijk, een vogel.','Wie is daar?','Lekker, een koek.','Mijn fiets is rood.','Ga je mee spelen?','De bal is weg.','Oma zingt een lied.','Waar is de kat?','Het regent zacht.','Ik lees graag.','Zij typt snel.','Dat was super.','Wil je thee?','De muis piept; de kat kijkt.','Even wachten; ik kom.','Morgen gaan we naar het bos.','Mijn broer speelt gitaar.','Wie heeft de koekjes opgegeten?','De trein vertrekt om acht uur.','Zullen we een spel doen?','Het water is nog te koud.','Opa vertelt een lang verhaal.','Waar heb je dat gevonden?','De bus komt bijna, schiet op.','Ik typ nu al best snel.','Vanavond eten we pannenkoeken.','De vogels zingen in de tuin.','Heb jij mijn sleutels gezien?','Het feest begint om vier uur.','We bouwen een hut van takken.','Zij wint bijna elk potje.','Doe je jas aan, het waait hard.','De kat ligt in de zon te slapen.'];
+// Apostrof-woorden voor wie het aandurft (dode toets op US-international: typ ' en dan spatie, of gebruik een NL-indeling)
+const APOS=["'s avonds","'s ochtends","'s middags","z'n fiets","m'n tas","'s nachts"];
+// Veelvoorkomende Nederlandse lettercombinaties: letteropdrachten zijn altijd stukjes echte taal.
+const FRAGS=`en er de et te an ee ij in ge aa oo ie el nd st ch he ve le re at on is ar es al ak am ap op om ol ei eu ui oe ou au ng nk nt rd rt lt ld ht ns ls ks ds sl sk sp sn sm fl fr kl kn kr gr gl dr tr br bl pl pr vl vr zw za ze zo zu zi ja je jo ju wa we wi wo ha ho hu hi ma me mi mo mu na ne ni no nu ra ri ro ru la li lo lu ka ke ki ko ku da di do du ta ti to tu sa se si so su pa pe pi po pu ba be bi bo bu va vi vo vu ga gi go gu fa fe fi fo fu ff ll ss tt nn mm kk pp rr dd ck lf lk lm lp rk rm rn rp rs
+een ten der den ver ijk sch aar oor eer ing ste gen ter ren ach eel ool aal ijs uis oek oen aan iet ies oet eet ast ost ust elk olk ark erk ork urk lijk ken sel del gel kel fel jas dag kaf laf saf sla las dal das hal hak gal slee lees fee hee gee jee sjaal sjee`.split(/\s+/);
+
+// Vingerkaart (QWERTY, zoals vrijwel alle Nederlandse toetsenborden)
+// Indelingen: vingers volgen de positie op het bord, dus bij AZERTY krijgt elke toets automatisch de juiste vinger.
+const LAYOUTS={
+  qwerty:{rows:[['q','w','e','r','t','y','u','i','o','p'],['a','s','d','f','g','h','j','k','l',';'],['lshift','z','x','c','v','b','n','m',',','.','/','rshift'],[' ']],shifted:{'?':'/'},labels:{'/':'/ ?'}},
+  azerty:{rows:[['a','z','e','r','t','y','u','i','o','p'],['q','s','d','f','g','h','j','k','l','m'],['lshift','w','x','c','v','b','n',',',';',':','!','rshift'],[' ']],shifted:{'?':',','.':';'},labels:{',':', ?',';':'; .'}},
+};
+let FINGER={},SHIFTED={},KEYLABEL={},KB_ROWS=[],HOME={};
+function applyLayout(){
+  const L=LAYOUTS[DB.layout]||LAYOUTS.qwerty; KB_ROWS=L.rows; SHIFTED=L.shifted; KEYLABEL=Object.assign({lshift:'Shift',rshift:'Shift',' ':'spatie'},L.labels);
+  const cols=['lp','lr','lm','li','li','ri','ri','rm','rr','rp']; FINGER={' ':'th',lshift:'lp',rshift:'rp'};
+  KB_ROWS.forEach((row,ri)=>{ const keys=row.filter(k=>k.length===1&&k!==' '); keys.forEach((k,i)=>{ FINGER[k]=cols[Math.min(i,9)]; }); });
+  const home=KB_ROWS[1]; HOME={lp:home[0],lr:home[1],lm:home[2],li:home[3],ri:home[6],rm:home[7],rr:home[8],rp:home[9]};
+  if(document.getElementById('kb')){ buildKb(); buildHands(); if(prof) renderKb(); }
+}
+function setLayout(l){ DB.layout=l; save(); applyLayout(); toast('Indeling: '+l.toUpperCase()); }
+const FNAME={lp:'linker pink',lr:'linker ringvinger',lm:'linker middelvinger',li:'linker wijsvinger',ri:'rechter wijsvinger',rm:'rechter middelvinger',rr:'rechter ringvinger',rp:'rechter pink',th:'duim'};
+const FCOL={p:'var(--f-pink)',r:'var(--f-ring)',m:'var(--f-mid)',i:'var(--f-index)',h:'var(--f-thumb)'};
+const fcol=f=>FCOL[f[1]];
+function keyOf(ch){ if(SHIFTED[ch]) return SHIFTED[ch]; return ch.toLowerCase(); }
+function needsShift(ch){ return !!SHIFTED[ch]||(ch!==ch.toLowerCase()); }
+const ROWOF=k=>KB_ROWS[1].includes(k)?'op de thuisrij':KB_ROWS[0].includes(k)?'één rij omhoog':'één rij omlaag';
+const GENERAL_TIPS=['Kijk naar het scherm, niet naar je handen.','Na elke toets gaan je vingers terug naar f en j.','Rustig aan: goed typen is belangrijker dan snel.','Zet je vingers licht op de toetsen, niet drukken.','Je polsen zweven, ellebogen los langs je lijf.'];
+function tipFor(want,typed){
+  const k=keyOf(want), f=FINGER[k]||'th';
+  if(want===' ') return 'De spatie druk je met je duim.';
+  if(needsShift(want)) return `Hoofdletter of ${want}: houd Shift vast met je ${f[0]==='l'?'rechter':'linker'} pink en typ dan de ${k}.`;
+  const tk=keyOf(typed||''); const tf=FINGER[tk];
+  if(tf&&tf===f) return `Bijna! De ${k} zit ${ROWOF(k)}, ook met je ${FNAME[f]}.`;
+  if(tf&&tf!=='th'&&tf[0]===f[0]) return `Je drukte de ${tk} (${FNAME[tf]}). De ${k} is van je ${FNAME[f]}, ${ROWOF(k)}.`;
+  if(tf&&tf!=='th') return `Verkeerde hand: de ${k} typ je met je ${FNAME[f]} (${ROWOF(k)}).`;
+  return `De ${k} typ je met je ${FNAME[f]} (${ROWOF(k)}).`;
+}
+// Dagdoel en reeks
+const todayKey=()=>new Date().toISOString().slice(0,10);
+function todayAdd(n){ prof.days=prof.days||{}; const d=todayKey(); const was=prof.days[d]||0; prof.days[d]=was+n; const goal=prof.goal||200; if(was<goal&&prof.days[d]>=goal){ toast('Dagdoel gehaald! Reeks: '+streak()+' dagen','badge'); SFX.badge(); } }
+function streak(){ const days=prof.days||{}; const goal=prof.goal||200; let s=0; const d=new Date(); if((days[todayKey()]||0)<goal) d.setDate(d.getDate()-1); for(;;){ const k=d.toISOString().slice(0,10); if((days[k]||0)>=goal){ s++; d.setDate(d.getDate()-1); } else break; } return s; }
+function renderGoal(){ if(!prof) return; const d=prof.days&&prof.days[todayKey()]||0, goal=prof.goal||200; const el=document.getElementById('goal'); if(el) el.textContent=`Vandaag ${Math.min(d,goal)}/${goal} toetsen · reeks ${streak()} dag${streak()===1?'':'en'}`; }
+
+// ───────────────────────── Opslag / spelers ─────────────────────────
+const SAVE_KEY='letterloper.v2';
+const COLORS=['#4fd1ff','#ff6b9d','#5be37d','#ffcc3d','#b197fc','#ff8a4c'];
+let DB={profiles:{},last:null,muted:false};
+function load(){ try{ const d=JSON.parse(localStorage.getItem(SAVE_KEY)); if(d&&d.profiles) DB=d; }catch(e){} }
+function save(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(DB)); }catch(e){} }
+function newProfile(name,color,level){ const L=level||'nieuw'; return {name,color,stage:L==='goed'?9:1,mastery:0,speed:L==='goed'?1.5:L==='beetje'?0.9:0.45,practised:false,focus:12,keys:{},best:0,totalChars:0,totalErr:0,totalPrompts:0,coins:0,badges:[],worlds:1,rooms:1,items:0,wordDone:false,mode:'runner'}; }
+let prof=null;
+
+// ───────────────────────── Audio: chiptune + effecten ─────────────────────────
+let ctx=null,master=null,noiseBuf=null,musicBus=null,sfxBus=null,OUT=null;
+function applyVol(){ if(!ctx) return; master.gain.value=DB.muted?0:1; musicBus.gain.value=DB.musicVol??0.8; sfxBus.gain.value=DB.sfxVol??1; }
+const mus={step:0,next:0,timer:null,on:false};
+const MEL_A=[72,0,76,0,79,0,76,0,72,0,76,0,79,81,79,0,76,0,74,0,76,0,72,0,74,76,74,72,69,0,67,0];
+const MEL_B=[69,0,72,0,76,0,72,0,69,0,72,0,76,77,76,0,74,0,76,0,77,0,76,0,74,0,72,0,71,0,67,0];
+const BAS_A=[48,0,0,48,0,0,55,0,48,0,0,48,0,0,55,0,45,0,0,45,0,0,52,0,41,0,0,41,0,0,43,0];
+const BAS_B=[45,0,0,45,0,0,52,0,45,0,0,45,0,0,52,0,41,0,0,41,0,0,48,0,43,0,0,43,0,0,43,0];
+// Poppenhuis: speeldoos-wijsje (zachter, langzamer)
+const MEL_H=[79,0,0,76,0,0,72,0,74,0,0,76,0,0,0,0,77,0,0,74,0,0,71,0,72,0,0,0,0,0,0,0];
+const MEL_H2=[76,0,0,79,0,0,84,0,83,0,0,81,0,0,79,0,77,0,0,76,0,0,74,0,72,0,0,0,0,0,0,0];
+const BAS_H=[48,0,0,0,55,0,0,0,52,0,0,0,55,0,0,0,53,0,0,0,57,0,0,0,55,0,0,0,55,0,0,0];
+const TRANS=[0,2,-3,5,-5];
+const mf=m=>440*Math.pow(2,(m-69)/12);
+function audioInit(){
+  if(ctx) { if(ctx.state==='suspended') ctx.resume(); return; }
+  const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+  ctx=new AC(); master=ctx.createGain(); master.connect(ctx.destination); musicBus=ctx.createGain(); sfxBus=ctx.createGain(); musicBus.connect(master); sfxBus.connect(master); OUT=sfxBus; applyVol();
+  noiseBuf=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate); const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+}
+function tone(freq,t,dur,type,vol,slideTo,lp,detune){
+  if(!ctx) return; const o=ctx.createOscillator(),g=ctx.createGain(); o.type=type; o.frequency.setValueAtTime(freq,t); if(detune) o.detune.value=detune;
+  if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+  g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(vol,t+(lp?0.03:0.006)); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  let node=o; if(lp){ const f=ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(lp,t); f.frequency.exponentialRampToValueAtTime(Math.max(120,lp*0.25),t+dur); f.Q.value=4; o.connect(f); node=f; }
+  node.connect(g).connect(OUT); o.start(t); o.stop(t+dur+0.03);
+}
+// Sterrenjager: donkere synth in a-klein — arpeggio-bas, pad, schaarse melodie
+const BAS_S=[45,0,52,0,57,0,52,0,45,0,52,0,57,0,60,0,41,0,48,0,53,0,48,0,43,0,50,0,55,0,50,0];
+const PAD_S=[45,45,41,43]; const MEL_S=[0,0,0,0,69,0,0,72,0,0,71,0,69,0,0,0,0,0,0,0,65,0,0,67,0,0,69,0,67,0,65,0];
+const MEL_S2=[0,0,0,0,76,0,0,74,0,0,72,0,71,0,0,0,0,0,0,0,72,0,0,71,0,0,69,0,0,0,64,0];
+function noise(t,dur,vol,hp){
+  if(!ctx) return; const s=ctx.createBufferSource(); s.buffer=noiseBuf; const g=ctx.createGain(); const f=ctx.createBiquadFilter(); f.type=hp?'highpass':'lowpass'; f.frequency.value=hp||1200;
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); s.connect(f).connect(g).connect(OUT); s.start(t); s.stop(t+dur+0.02);
+}
+const now=()=>ctx?ctx.currentTime:0;
+const SFX={
+  tick(p){ const t=now(); tone(660+p*90,t,0.07,'square',0.06); },
+  error(){ const t=now(); tone(170,t,0.18,'sawtooth',0.07,120); noise(t,0.1,0.06); },
+  jump(){ const t=now(); tone(320,t,0.22,'square',0.08,760); },
+  coin(){ const t=now(); tone(988,t,0.08,'square',0.09); tone(1319,t+0.08,0.2,'square',0.09); },
+  stomp(){ const t=now(); tone(220,t,0.15,'square',0.1,60); noise(t,0.12,0.15); },
+  hurt(){ const t=now(); tone(300,t,0.35,'sawtooth',0.1,90); noise(t,0.25,0.15); },
+  star(){ const t=now(); [1047,1319,1568,2093,2637].forEach((f,i)=>tone(f,t+i*0.06,0.18,'square',0.08)); },
+  solved(){ const t=now(); tone(880,t,0.08,'triangle',0.12); tone(1175,t+0.07,0.14,'triangle',0.12); },
+  unlock(){ const t=now(); [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,t+i*0.09,0.25,'square',0.09)); },
+  flag(){ const t=now(); [392,523,659,784,1047].forEach((f,i)=>tone(f,t+i*0.08,0.3,'triangle',0.13)); },
+  badge(){ const t=now(); tone(1568,t,0.1,'square',0.07); tone(2093,t+0.1,0.25,'square',0.07); },
+  happy(){ const t=now(); [784,988,1175].forEach((f,i)=>tone(f,t+i*0.07,0.2,'sine',0.14)); },
+  sad(){ const t=now(); tone(440,t,0.25,'sine',0.12,330); tone(330,t+0.25,0.35,'sine',0.1,262); },
+  sparkle(){ const t=now(); [2093,2637,3136].forEach((f,i)=>tone(f,t+i*0.05,0.12,'sine',0.06)); },
+  laser(){ const t=now(); tone(1400,t,0.12,'sawtooth',0.07,260,3000); tone(2800,t,0.06,'square',0.03,600); },
+  explode(){ const t=now(); noise(t,0.45,0.35,0); tone(90,t,0.5,'sine',0.3,30); noise(t+0.05,0.3,0.15,2500); },
+  shield(){ const t=now(); tone(220,t,0.4,'sawtooth',0.12,110,900); noise(t,0.3,0.2,3000); },
+  warp(){ const t=now(); tone(110,t,1.2,'sawtooth',0.12,1760,2200); [880,1109,1319,1760].forEach((f,i)=>tone(f,t+0.6+i*0.1,0.5,'triangle',0.08)); },
+  lock(){ const t=now(); tone(1760,t,0.05,'square',0.05); tone(2349,t+0.06,0.09,'square',0.05); },
+};
+function playStep(step,t){
+  const sec=Math.floor(step/32), s=step%32, spb=60/G.bpm/4;
+  if(G.mode==='space'){
+    const tr=[0,-2,3,-5,2][(G.world-1)%5]; const mel=[MEL_S,MEL_S,MEL_S2,MEL_S][sec];
+    if(BAS_S[s]) tone(mf(BAS_S[s]+tr),t,spb*1.7,'sawtooth',0.085,0,900+Math.min(prof.speed,3)*300);
+    if(s%8===0){ const r=PAD_S[Math.floor(s/8)]+tr+12; tone(mf(r),t,spb*8,'sawtooth',0.028,0,700,-7); tone(mf(r),t,spb*8,'sawtooth',0.028,0,700,7); tone(mf(r+7),t,spb*8,'triangle',0.03); }
+    if(mel[s]) tone(mf(mel[s]+tr),t,spb*2.5,'square',0.035,0,1800);
+    if(s%8===0) tone(70,t,0.25,'sine',0.35,35);
+    if(s%8===4) noise(t,0.18,0.14,0);
+    if(s%2===1) noise(t,0.025,0.035,8000);
+    return;
+  }
+  if(G.mode==='house'){
+    const tr=TRANS[(G.world-1)%TRANS.length]; const mel=[MEL_H,MEL_H2,MEL_H,MEL_H2][sec];
+    if(mel[s]) tone(mf(mel[s]+tr),t,spb*3,'sine',0.11); if(mel[s]) tone(mf(mel[s]+tr+12),t,spb*1.5,'triangle',0.03);
+    if(BAS_H[s]) tone(mf(BAS_H[s]+tr),t,spb*3.5,'triangle',0.06);
+    if(s%4===2) noise(t,0.02,0.02,7000);
+    return;
+  }
+  const tr=TRANS[(G.world-1)%TRANS.length];
+  const mel=[MEL_A,MEL_A,MEL_B,MEL_A][sec], bas=[BAS_A,BAS_A,BAS_B,BAS_A][sec];
+  if(mel[s]) tone(mf(mel[s]+tr),t,spb*0.9,'square',0.045);
+  if(bas[s]) tone(mf(bas[s]+tr),t,spb*1.6,'triangle',0.09);
+  if(s%8===0) tone(120,t,0.12,'sine',0.25,40);
+  if(s%8===4) noise(t,0.12,0.12);
+  if(s%2===0) noise(t,0.03,0.05,6000);
+}
+function musicStart(){ if(!ctx||mus.on) return; mus.on=true; mus.step=0; mus.next=ctx.currentTime+0.05;
+  mus.timer=setInterval(()=>{ if(!ctx) return; OUT=musicBus; while(mus.next<ctx.currentTime+0.15){ playStep(mus.step,mus.next); mus.next+=60/G.bpm/4; mus.step=(mus.step+1)%128; } OUT=sfxBus; },40); }
+function musicStop(){ mus.on=false; clearInterval(mus.timer); }
+function setBpm(){ G.bpm=G.mode==='house'?92*(0.9+0.08*Math.min(prof.speed,3)):G.mode==='space'?104*(0.9+0.1*Math.min(prof.speed,3)):118*(0.85+0.12*Math.min(prof.speed,3)); }
+
+// ───────────────────────── Spelstatus ─────────────────────────
+const W=960,H=540,GY=450,HX=180;
+const cv=document.getElementById('cv'),cx=cv.getContext('2d');
+const G={state:'menu',mode:'runner',world:1,bpm:118,v:80,vTarget:80,obs:[],parts:[],pops:[],hero:null,coins:0,score:0,combo:0,bestCombo:0,prompts:0,worldPrompts:0,sessChars:0,sessErr:0,shake:0,off:0,t:0,active:null,perfectRun:0,shelf:[],toyT:0,errTotal:0};
+const THEMES=[
+  {name:'Grasland',sky:['#5ec8ff','#c6f0ff'],hill:'#4fbf63',hill2:'#2f9a47',ground:'#8b5a2b',grass:'#4cc24a',cloud:'#ffffff'},
+  {name:'Woestijn',sky:['#ff9f4a','#ffe6b0'],hill:'#e8b36a',hill2:'#c98f48',ground:'#b5733a',grass:'#f0cc7a',cloud:'#fff6e6'},
+  {name:'Sneeuwland',sky:['#8ec8ff','#eef8ff'],hill:'#e6f1ff',hill2:'#bcd7f2',ground:'#6b7b8f',grass:'#f7fcff',cloud:'#ffffff'},
+  {name:'Nacht',sky:['#121637','#45307a'],hill:'#2c3270',hill2:'#1e2358',ground:'#2b2f4a',grass:'#5563b8',cloud:'#7378b8',stars:true},
+  {name:'Vulkaan',sky:['#3d0f0f','#ff7a3c'],hill:'#5d2b2b',hill2:'#3f1c1c',ground:'#3a2a2a',grass:'#ff6b3c',cloud:'#8c4a4a'},
+];
+const ROOMS=[
+  {name:'Keuken',wall:'#ffe9c2',wall2:'#ffd58f',floor:'#c98b5a',trim:'#ff8fa3',win:'#9fe0ff'},
+  {name:'Slaapkamer',wall:'#e9d8ff',wall2:'#d4bcff',floor:'#b07aa8',trim:'#ffb3d1',win:'#ffd27f'},
+  {name:'Badkamer',wall:'#d6f4ff',wall2:'#aee6ff',floor:'#7fb8d8',trim:'#ffffff',win:'#bff0ff'},
+  {name:'Tuin',wall:'#bdf0ff',wall2:'#8fe3ff',floor:'#5ec25a',trim:'#ffd84d',win:'#fff9c4',outside:true},
+  {name:'Zolder',wall:'#f3d9b1',wall2:'#d9b382',floor:'#8a5a3a',trim:'#ff9f6b',win:'#4a3b7a'},
+  {name:'Speelkamer',wall:'#ffd9e6',wall2:'#ffb6cf',floor:'#f7c9a6',trim:'#7ad7ff',win:'#9fe0ff'},
+];
+const SECTORS=[
+  {name:'Buitenrand',bg:['#05070f','#0d1430'],neb:'#2a3a8a',neb2:'#6a2a7a'},
+  {name:'Rode Nevel',bg:['#0a0508','#2a0f1a'],neb:'#8a2a3a',neb2:'#c05a2a'},
+  {name:'IJsveld',bg:['#04080f','#0a2436'],neb:'#2a7a8a',neb2:'#4ab0c0'},
+  {name:'Smaragdgordel',bg:['#040a06','#0d2a1a'],neb:'#2a7a4a',neb2:'#7ab03a'},
+  {name:'Gouden Kern',bg:['#0a0804','#2a1e08'],neb:'#8a6a2a',neb2:'#d0a040'},
+];
+const sector=()=>SECTORS[(G.world-1)%SECTORS.length];
+const SHIP=['..........ww....','.........wwww...','..bbbbbbbwwwww..','.bbbbbbbbbbwwww.','bbcccbbbbbbbbwwww','.bbbbbbbbbbwwww.','..bbbbbbbwwwww..','.........wwww...','..........ww....'];
+const DRONE=['...rr...rr..','..rrrrrrrr..','.rrkkrrkkrr.','rrrkkrrkkrrr','.rrrrrrrrrr.','..rr.rr.rr..','...r..r..r..'];
+const theme=()=>THEMES[(G.world-1)%THEMES.length];
+const room=()=>ROOMS[(G.world-1)%ROOMS.length];
+const HERO_BODY=['.bbbbbbbbbb.','.bwwbbbbwwb.','.bwkbbbbwkb.','.bbbbbbbbbb.','.bbbkkkkbbb.','..bbbbbbbb..','...bbbbbb...'];
+const HERO_HEADS=[['....rrrr....','..rrrrrrrr..','.rrrrrrrrrr.'],['.....kk.....','.....rr.....','..bbbbbbbb..'],['..rr....rr..','.rrrr..rrrr.','..rrrrrrrr..']];
+const heroMap=feet=>HERO_HEADS[prof&&prof.hero||0].concat(HERO_BODY,feet);
+const FEET_A=['..oo....oo..','..oo....oo..'], FEET_B=['...oo..oo...','...oo..oo...'], FEET_J=['....oooo....','............'];
+const ENEMY=['....p..p....','...pppppp...','..pppppppp..','.pwwppppwwp.','.pkwppppkwp.','.pppppppppp.','..pkkkkkkp..','..pppppppp..','.p.p.p.p.p.p'];
+const TOYS=[
+  {name:'Poes Pip',pal:{b:'#ffb347',w:'#fff',k:'#222',p:'#ff7eb6',s:'#ffd9a0'},map:['.b.......b..','.bb.....bb..','.bbbbbbbbb..','.bwwbbbwwb..','.bkwbbbkwb..','.bbbbpbbbb..','..bbbbbbb...','.bbbbbbbbbb.','.bsssssssb.b','.bbbbbbbbbbb','..bb..bb....','..bb..bb....']},
+  {name:'Beer Bas',pal:{b:'#b5703c',w:'#fff',k:'#222',p:'#ffd9a0',s:'#8a4f22'},map:['.bb......bb.','.bbb....bbb.','..bbbbbbbb..','.bbbbbbbbbb.','.bwkbbbbkwb.','.bbbbppbbbb.','.bbbpkkpbbb.','..bbbbbbbb..','.bbssssssbb.','.bbssssssbb.','..bbbbbbbb..','..bb....bb..']},
+  {name:'Robot Rik',pal:{b:'#9fb3c8',w:'#4fd1ff',k:'#222',p:'#ff5f6d',s:'#6b7f94'},map:['.....p......','.....s......','.bbbbbbbbbb.','.bwwbbbbwwb.','.bwwbbbbwwb.','.bbbbbbbbbb.','.bbkkkkkkbb.','.sbbbbbbbbs.','.sbppbbppbs.','.sbbbbbbbbs.','..ss....ss..','..ss....ss..']},
+  {name:'Konijn Kiki',pal:{b:'#f5f5f5',w:'#fff',k:'#222',p:'#ffb3c6',s:'#e0e0e0'},map:['..bp....pb..','..bp....pb..','..bp....pb..','..bbbbbbbb..','.bbbbbbbbbb.','.bkbbbbbbkb.','.bbbbppbbbb.','.bbbbbbbbbb.','..bbbbbbbb..','.bbbbbbbbbb.','.bbbbbbbbbb.','..bb....bb..']},
+];
+const ITEMS=[
+  {n:'taartje',map:['...rr...','..rrrr..','.pppppp.','.pwpwpw.','.pppppp.','.yyyyyy.','.yyyyyy.','........'],pal:{r:'#ff5f6d',p:'#ffb3c6',w:'#fff',y:'#ffe066'}},
+  {n:'plantje',map:['...g....','..ggg.g.','.g.ggg..','..gggg..','...gg...','..tttt..','..tttt..','...tt...'],pal:{g:'#5be37d',t:'#c98b5a'}},
+  {n:'hartje',map:['.rr..rr.','rrrrrrrr','rrrrrrrr','rrrrrrrr','.rrrrrr.','..rrrr..','...rr...','........'],pal:{r:'#ff5f6d'}},
+  {n:'sterretje',map:['...y....','...y....','.yyyyy..','..yyy...','..yyy...','.y...y..','........','........'],pal:{y:'#ffe066'}},
+  {n:'kopje',map:['........','.wwwww..','.wwwwww.','.wwwwwww','.wwwwww.','.wwwww..','.bbbbb..','........'],pal:{w:'#fff',b:'#4fd1ff'}},
+  {n:'boekje',map:['.bbbbbb.','.bwwwwb.','.bwbbwb.','.bwwwwb.','.bwbwwb.','.bwwwwb.','.bbbbbb.','........'],pal:{b:'#b197fc',w:'#fff'}},
+  {n:'ballon',map:['..pppp..','.pppppp.','.ppwppp.','.pppppp.','..pppp..','...pp...','...k....','....k...'],pal:{p:'#4fd1ff',w:'#fff',k:'#444'}},
+  {n:'lampje',map:['..yyyy..','.yyyyyy.','.yyyyyy.','..yyyy..','...ww...','...ww...','..wwww..','........'],pal:{y:'#ffe066',w:'#ddd'}},
+];
+function sprite(map,x,y,s,pal){ for(let r=0;r<map.length;r++) for(let c=0;c<map[r].length;c++){ const ch=map[r][c]; if(ch==='.') continue; cx.fillStyle=pal[ch]||'#000'; cx.fillRect(Math.round(x+c*s),Math.round(y+r*s),s,s); } }
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+// ───────────────────────── Opdrachten maken (adaptief, zone van naaste ontwikkeling) ─────────────────────────
+function allowed(){ const s=new Set(); for(let i=0;i<prof.stage;i++) for(const c of GROUPS[i].keys) s.add(c); return s; }
+const capsOn=()=>GROUPS.slice(0,prof.stage).some(g=>g.caps);
+const newKeys=()=>prof.focus>0?GROUPS[prof.stage-1].keys:'';
+// Kans dat een toets in één keer goed gaat (c/p), met prior zodat weinig data niet overreageert.
+function firstTry(k){ const st=prof.keys[k]; if(!st||!st.p) return null; return st.c/st.p; }
+function kw(c){ c=keyOf(c); const st=prof.keys[c]||{n:0,e:0,p:0,c:0}; const er=st.e/Math.max(st.n,4); const ft=st.p?1-(st.c+2)/(st.p+2):0; return 1+5*er+4*ft+(newKeys().includes(c)?3:0); }
+// Zwakke toetsen: genoeg data en vaak niet in één keer goed → extra oefenen voor het spiergeheugen.
+function weakKeys(){ const A=allowed(); return [...A].filter(k=>/[a-z ]/.test(k)).map(k=>({k,st:prof.keys[k]})).filter(o=>o.st&&o.st.p>=4&&o.st.c/o.st.p<0.8).sort((a,b)=>a.st.c/a.st.p-b.st.c/b.st.p).map(o=>o.k); }
+function pickW(items,wf){ let tot=0; const ws=items.map(i=>{const w=wf(i);tot+=w;return w;}); let r=Math.random()*tot; for(let i=0;i<items.length;i++){ r-=ws[i]; if(r<=0) return items[i]; } return items[items.length-1]; }
+function sampleN(arr,n){ const a=arr.slice(); for(let i=a.length-1;i>0&&i>=a.length-n;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a.slice(-n); }
+const fragScore=w=>[...w].reduce((s,c)=>s+kw(c),0)/w.length;
+function makePrompt(){
+  const A=allowed(), sp=prof.speed, letters=[...A].filter(c=>/[a-z]/.test(c)), punct=[...A].filter(c=>',.;?'.includes(c));
+  const pool=WORDS.filter(w=>[...w].every(c=>A.has(c)));
+  // Verhaaltjes-modus: zinnen in volgorde zodra hoofdletters, spatie en punt beschikbaar zijn.
+  if(prof.story&&capsOn()&&A.has(' ')&&A.has('.')&&G.prompts%4!==2){
+    G.storyNo=G.storyNo||0; const st=STORIES[G.storyNo%STORIES.length]; const s=st[G.storyIdx%st.length]; G.storyIdx++; if(G.storyIdx%st.length===0){ G.storyNo++; }
+    if([...s].every(c=>A.has(c.toLowerCase())||c==="'"&&prof.apos)) return s;
+  }
+  if(prof.apos&&A.has(' ')&&prof.stage>=12&&Math.random()<0.08) return APOS[Math.floor(Math.random()*APOS.length)];
+  // Spiergeheugen-beurt: elke vierde opdracht bevat de zwakste toets (los, in een echte lettercombinatie of in een woord).
+  const shortW=pool.filter(w=>w.length<=3);
+  const twoWords=()=>{ const a=shortW[Math.floor(Math.random()*shortW.length)]; let b=shortW[Math.floor(Math.random()*shortW.length)]; if(b===a&&shortW.length>1) b=shortW[(shortW.indexOf(a)+1)%shortW.length]; return a+' '+b; };
+  // Spatie net vrijgespeeld: oefenen met twee korte woorden, zodat de duim het leert.
+  if(A.has(' ')&&newKeys()===' '&&shortW.length>=2&&Math.random()<0.75){ G.drill=false; return twoWords(); }
+  const weak=weakKeys();
+  if(weak.length&&prof.focus<=8&&G.prompts%4===2){
+    const c=weak[Math.floor(Math.random()*Math.min(2,weak.length))];
+    if(c===' '){ G.drill=true; return shortW.length>=2?twoWords():'de kat'; } const maxW=prof.stage<=3?1:prof.stage<=5?2:prof.stage<=8?3:4;
+    const ws=prof.stage>=7?pool.filter(w=>w.includes(c)&&w.length<=Math.max(3,Math.round(2+sp*2.2))):[];
+    const fr=FRAGS.filter(f=>f.includes(c)&&f.length<=maxW&&[...f].every(x=>A.has(x)));
+    const src=(ws.length&&Math.random()<0.5)?ws:fr; G.drill=true;
+    return src.length?src[Math.floor(Math.random()*src.length)]:c;
+  }
+  const pWord=(pool.length>=12&&prof.stage>=7&&prof.focus<=8)?Math.min(0.85,0.25+0.04*prof.stage):0;
+  if(Math.random()<pWord){
+    const maxLen=clamp(Math.round(2+sp*2.2),3,prof.stage<9?4:prof.stage<12?6:12);
+    const cands=pool.filter(w=>w.length<=maxLen); const src=cands.length?cands:pool;
+    const pick=()=>pickW(sampleN(src,14),fragScore);
+    let text=pick();
+    if(A.has(' ')&&Math.random()<(sp>0.9?0.4:0.25)){ const w2=sp>0.9?pick():shortW[Math.floor(Math.random()*shortW.length)]; if(w2&&w2!==text) text+=' '+w2; }
+    if(capsOn()&&A.has('.')&&A.has(' ')&&sp>1.1&&Math.random()<0.3){
+      const sents=SENTENCES.filter(s=>[...s].every(c=>A.has(c.toLowerCase()))); if(sents.length) return sents[Math.floor(Math.random()*sents.length)];
+    }
+    if(capsOn()&&Math.random()<0.45) text=text[0].toUpperCase()+text.slice(1);
+    if(punct.length&&Math.random()<0.35) text+=punct[Math.floor(Math.random()*punct.length)];
+    return text;
+  }
+  // Letterstukjes: alleen combinaties die echt in het Nederlands voorkomen; anders losse letters.
+  // Opbouw per stap: eerst losse letters, dan tweetjes, pas later drietjes. Vlak na een nieuwe toets: die toets los of met één bekende.
+  const maxN=prof.stage<=3?1:prof.stage<=5?2:prof.stage<=8?3:4;
+  const n=clamp(Math.floor(0.6+sp),1,maxN);
+  if(prof.focus>8){ const nk=newKeys().replace(' ',''); if(nk){ const c=nk[Math.floor(Math.random()*nk.length)]; if(maxN>=2&&Math.random()<(n>=2?0.5:0.3)){ const fr=FRAGS.filter(f=>f.length===2&&f.includes(c)&&[...f].every(x=>A.has(x))); if(fr.length) return fr[Math.floor(Math.random()*fr.length)]; } return c; } }
+  if(n>=2){ const fr=FRAGS.filter(f=>f.length<=n&&[...f].every(c=>A.has(c))); const nf=newKeys(); const focus=nf?fr.filter(f=>[...nf].some(c=>f.includes(c))):[]; const src=(focus.length&&Math.random()<0.6)?focus:fr; if(src.length) return pickW(sampleN(src,14),fragScore); }
+  return pickW(letters,kw);
+}
+// Tijd per opdracht: ruimer vlak na een nieuwe toets (focus), zodat het tempo pas oploopt als de toets zit.
+const budget=len=>(2.4+1.0*len)/prof.speed*(prof.focus>0?1.5:1);
+
+// ───────────────────────── Obstakels / wensen ─────────────────────────
+function spawnNext(){
+  G.drill=false; const text=makePrompt(); if(G.drill) toast('Oefenbeurt: '+text,'badge');
+  if(G.mode==='house'){
+    const toy=TOYS[Math.floor(Math.random()*TOYS.length)]; const slots=[200,480,760]; const x=slots[(G.prompts+Math.floor(Math.random()*2))%3];
+    const ob={type:'wish',toy,x,text,pos:0,errors:0,solved:false,resolved:false,T:budget(text.length)*1.35,timer:0,anim:0,mood:0,appear:0};
+    G.obs.push(ob); G.active=ob; renderPrompt(); return;
+  }
+  const last=G.obs[G.obs.length-1];
+  // Nieuwe elementen verschijnen ín beeld (rechts), met een pop-in, zodat je ziet wat je typt.
+  const SX=W-130; let x=Math.max(SX,(last?last.x+last.w+170:0));
+  if(G.mode==='space'){
+    if(G.worldPrompts>=16){ G.worldPrompts=0; G.world++; prof.worlds=Math.max(prof.worlds,G.world); G.coins+=20; prof.coins+=20; SFX.warp(); G.warp=1.4; toast('Sector '+G.world+': '+sector().name); if(G.sectorHits===0){ addScore(100); toast('Schild intact: +100','badge'); } G.sectorHits=0; renderHUD(); }
+    // Baas aan het eind van de sector: een lange opdracht (zin of drie woorden), langzaam, dik gepantserd.
+    const boss=G.worldPrompts===15; let btext=text;
+    if(boss){ const A=allowed(); const sents=SENTENCES.filter(s=>[...s].every(c=>A.has(c.toLowerCase()))); const pool=WORDS.filter(w=>[...w].every(c=>A.has(c))&&w.length>=3); btext=sents.length&&capsOn()?sents[Math.floor(Math.random()*sents.length)]:A.has(' ')&&pool.length>=3?sampleN(pool,3).join(' '):text+text; toast('Baas in aantocht!','tip'); }
+    const r=Math.random(); const type=boss?'boss':r<0.45?'asteroid':r<0.8?'drone':r<0.95?'cruiser':'comet';
+    const sx=boss?W-200:W-150;
+    const ob={type,x:sx,y:boss?H/2-40:rnd(120,GY-60),w:type==='cruiser'?110:boss?180:56,text:btext,pos:0,errors:0,solved:false,resolved:false,spawnX:sx,T:budget(btext.length)*(boss?1.6:1),timer:0,rot:rnd(0,6),hp:0,appear:0};
+    G.obs.push(ob); G.active=ob; G.vTarget=clamp((ob.x-HX-40)/ob.T,40,460); burst(ob.x+ob.w/2,ob.y,'#8ff0ff',10); SFX.lock(); renderPrompt(); return;
+  }
+  if(G.worldPrompts>=15){ G.worldPrompts=0; G.obs.push({type:'flag',x,w:20}); x+=200; }
+  const r=Math.random(); const pStar=prof.calm?0.15:0.06; const type=r<0.34?'pit':r<0.66?'enemy':r<1-pStar?'block':'star';
+  const ob={type,x,w:type==='pit'?90:48,text,pos:0,errors:0,solved:false,resolved:false,spawnX:x,T:budget(text.length),timer:0,appear:0};
+  G.obs.push(ob); G.active=ob; G.vTarget=clamp((x-HX-30)/ob.T,50,460); if(x<W) burst(x+ob.w/2,type==='pit'?GY:GY-60,'#ffffffaa',8);
+  renderPrompt();
+}
+// Pas een nieuw obstakel als het vorige in beeld is: snelle typers krijgen zo geen stapel obstakels buiten beeld.
+function maybeSpawn(){ if(G.active||G.state!=='play') return; if(G.mode==='house'){ if(G.toyT<=0) spawnNext(); return; } const last=G.obs[G.obs.length-1]; if(!last||last.x+last.w<W-310) spawnNext(); else G.vTarget=Math.max(220,60+70*prof.speed); }
+function heroJump(t,h){ const hero=G.hero; hero.g=8*h/(t*t); hero.vy=-4*h/t; hero.air=true; }
+function doAction(ob){
+  if(ob.type==='pit'){ heroJump(clamp((ob.w+90)/G.v,0.55,1.5),85); SFX.jump(); }
+  else if(ob.type==='enemy'){ heroJump(0.45,55); ob.squash=0.5; SFX.stomp(); burst(ob.x+24,GY-20,'#c77dff',12); pop(ob.x+24,GY-70,'Plof!','#fff'); addScore(30); }
+  else if(ob.type==='block'){ heroJump(0.45,60); ob.bump=0.3; SFX.coin(); G.coins+=3; prof.coins+=3; burst(ob.x+24,GY-120,'#ffcc3d',8); pop(ob.x+24,GY-150,'+3','#ffcc3d'); }
+  else if(ob.type==='star'){ heroJump(0.5,70); ob.gone=true; SFX.star(); G.coins+=10; prof.coins+=10; burst(ob.x+24,GY-120,'#fff176',24); pop(ob.x+24,GY-160,'+10 munten!','#fff176'); }
+}
+function doFail(ob){
+  const hero=G.hero; G.combo=0;
+  if(ob.type==='pit'){ hero.fall=0.7; stumble(); }
+  else if(ob.type==='enemy'){ ob.gone=true; burst(ob.x+24,GY-20,'#c77dff',10); stumble(); }
+  else { pop(ob.x+24,GY-120,'gemist','#aab'); }
+  adapt(ob,'miss'); finishPrompt(ob);
+}
+function stumble(){ G.hero.hurtT=1.2; G.shake=0.4; SFX.hurt(); pop(HX+24,GY-120,'Oeps!','#ff8a93'); }
+function addScore(n){ G.score+=n; }
+function finishPrompt(ob){ ob.resolved=true; G.prompts++; G.worldPrompts++; prof.totalPrompts++; G.active=null; G.lastKeyT=0; renderHUD(); renderGoal(); checkBadges(); if(G.prompts%5===0) prof.weak=weakKeys().slice(0,3); save(); renderPrompt(); if(G.mode==='house') G.toyT=0.9; maybeSpawn(); }
+
+// Adaptief: snelheid stijgt bij foutloos én vlot, zakt bij fouten (elke fout remt direct al een beetje).
+function adapt(ob,how){
+  const len=ob.text.length;
+  if(how==='miss'){ prof.speed-=0.12; prof.mastery-=0.05; G.perfectRun=0; }
+  else if(ob.errors===0){ const margin=prof.calm?1:ob.spawnX?(ob.x-HX)/(ob.spawnX-HX):1-ob.timer/ob.T; prof.speed+=margin>0.35?0.04:0.02; prof.mastery+=0.07*(1+0.08*len); G.perfectRun++; }
+  else if(ob.errors===1){ prof.mastery+=0.02; G.perfectRun=0; }
+  else { prof.speed-=0.04; prof.mastery-=0.03; G.perfectRun=0; }
+  prof.speed=clamp(prof.speed,0.35,5); prof.mastery=clamp(prof.mastery,0,1);
+  if(prof.focus>0) prof.focus--;
+  setBpm();
+  if(prof.mastery>=1&&prof.stage<GROUPS.length){ prof.mastery=0; prof.stage++; prof.focus=14; prof.speed=Math.max(0.35,prof.speed-0.3); setBpm(); showUnlock(); }
+  renderMastery();
+}
+function onError(ob,typed){
+  const want=ob.text[ob.pos];
+  prof.speed=clamp(prof.speed-0.035,0.35,5); G.errTotal++;
+  if(G.mode==='house'){ ob.T+=0.6; ob.mood=0.5; }
+  else { G.vTarget*=0.82; ob.T+=0.4; }
+  if(ob.errors===1||ob.errors%3===0) tip(tipFor(want,typed));
+  else if(G.errTotal%6===0) tip(GENERAL_TIPS[Math.floor(Math.random()*GENERAL_TIPS.length)]);
+  setBpm(); renderHUD();
+}
+
+// ───────────────────────── Typen ─────────────────────────
+function onKey(e){
+  if(e.key==='Escape'){ if(G.state==='play') pause(); else if(G.state==='pause') resume(); return; }
+  if(G.state==='practice'){ if(e.ctrlKey||e.metaKey||e.altKey) return; if(e.key===' '||e.key==='Enter') e.preventDefault(); practiceKey(e.key); return; }
+  if(G.state==='unlock'&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); showPractice(GROUPS[prof.stage-1]); return; }
+  if(G.state==='over'&&e.key==='Enter'){ e.preventDefault(); startGame(); return; }
+  if(G.state!=='play'||e.ctrlKey||e.metaKey||e.altKey) return;
+  if(e.key.length!==1) return;
+  e.preventDefault();
+  const ob=G.active; if(!ob) return;
+  if(e.key==='Dead'||e.key==='Shift') return;   // dode toetsen (´ ¨ ~ op US-international) en Shift zelf tellen niet mee
+  const want=ob.text[ob.pos], k=keyOf(want), st=prof.keys[k]||(prof.keys[k]={n:0,e:0,p:0,c:0});
+  if(st.p===undefined){ st.p=0; st.c=0; }
+  st.n++; prof.totalChars++; G.sessChars++; ob.errAt=ob.errAt||{}; todayAdd(1);
+  const tnow=performance.now(), lat=G.lastKeyT?Math.min(5000,tnow-G.lastKeyT):null; G.lastKeyT=tnow;
+  if(e.key===want){
+    st.p++; if(!ob.errAt[ob.pos]) st.c++;   // in één keer goed?
+    if(lat!==null){ st.ms=(st.ms||0)+lat; st.mn=(st.mn||0)+1; G.sessMs+=lat; G.sessOk++; }
+    ob.pos++; G.combo++; G.bestCombo=Math.max(G.bestCombo,G.combo); addScore(10*(1+Math.floor(G.combo/10)));
+    if(G.mode==='space'){ SFX.laser(); G.bolts.push({x1:HX+64,y1:G.shipY,x2:ob.x+ob.w/2,y2:ob.y,t:0.12}); ob.hp=ob.pos/ob.text.length; burst(ob.x+ob.w/2,ob.y,'#ffb347',3); } else SFX.tick(ob.pos/ob.text.length);
+    pressKey(k,false);
+    if(ob.pos>=ob.text.length){ ob.solved=true; const perfect=ob.errors===0; addScore(perfect?100:50); G.coins++; prof.coins++; if(ob.text.length>=2&&/[a-z]{2,}/i.test(ob.text)) prof.wordDone=true;
+      if(G.mode==='house'){ SFX.solved(); wishDone(ob); } else if(G.mode==='space') spaceDestroy(ob,perfect); else { SFX.solved(); pop(ob.x+ob.w/2,GY-115,perfect?'Perfect!':'Goed!',perfect?'#5be37d':'#fff'); }
+      adapt(ob,'ok'); finishPrompt(ob); }
+  } else {
+    ob.errors++; st.e++; ob.errAt[ob.pos]=1; prof.totalErr++; const tk=keyOf(e.key); if(tk.length===1){ st.conf=st.conf||{}; st.conf[tk]=(st.conf[tk]||0)+1; } G.sessErr++; G.combo=0; SFX.error(); pressKey(keyOf(e.key),true); onError(ob,e.key);
+    const pb=document.getElementById('promptbar'); pb.classList.remove('err'); void pb.offsetWidth; pb.classList.add('err');
+  }
+  renderPrompt(); renderHUD();
+}
+window.addEventListener('keydown',onKey);
+function pressKey(k,wrong){ const el=KEYS[k]; if(!el) return; el.classList.add(wrong?'wrong':'pressed'); setTimeout(()=>el.classList.remove('pressed','wrong'),120); }
+
+// ───────────────────────── Weergave DOM ─────────────────────────
+const KEYS={};
+function buildKb(){ const kb=document.getElementById('kb'); kb.innerHTML=''; for(const k in KEYS) delete KEYS[k]; KB_ROWS.forEach(row=>{ const r=document.createElement('div'); r.className='krow'; row.forEach(k=>{ const el=document.createElement('div'); el.className='key'+(k.length>1?' wide':'')+(k===' '?' space':''); el.textContent=KEYLABEL[k]||k; el.style.setProperty('--kc',fcol(FINGER[k]||'th')); if(k==='f'||k==='j'){ const b=document.createElement('i'); b.className='bump'; el.appendChild(b);} r.appendChild(el); KEYS[k]=el; }); kb.appendChild(r); }); }
+// ───────────────────────── Geanimeerde handen: vingertoppen op de thuisrij, duimen op de spatiebalk ─────────────────────────
+const TIPCOL={lp:'#ff7eb6',lr:'#ffa94d',lm:'#ffe066',li:'#69db7c',ri:'#69db7c',rm:'#ffe066',rr:'#ffa94d',rp:'#ff7eb6',lt:'#b197fc',rt:'#b197fc'};
+const HANDS={tips:{},el:null,on:true};
+function keyCenter(k,dx){ const el=KEYS[k]; return {x:el.offsetLeft+el.offsetWidth/2+(dx||0),y:el.offsetTop+el.offsetHeight/2}; }
+function handsHome(id){ if(id==='lt') return keyCenter(' ',-60); if(id==='rt') return keyCenter(' ',60); return keyCenter(HOME[id]); }
+function buildHands(){
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'); svg.id='hands'; document.getElementById('kb').appendChild(svg); HANDS.el=svg; HANDS.tips={};
+  const mk=(t,cls)=>{ const e=document.createElementNS('http://www.w3.org/2000/svg',t); if(cls) e.setAttribute('class',cls); svg.appendChild(e); return e; };
+  // Opbouw per hand: pols, palm, dan per vinger drie lagen (omlijning, vulling, dikkere basis) en een gekleurde nagel.
+  HANDS.wristL=mk('rect','palm'); HANDS.wristR=mk('rect','palm'); HANDS.palmL=mk('path','palm'); HANDS.palmR=mk('path','palm');
+  for(const id of ['lt','lp','lr','lm','li','ri','rm','rr','rp','rt']){ const h=handsHome(id); HANDS.tips[id]={x:h.x,y:h.y,tx:h.x,ty:h.y,o:mk('path','fo'),l:mk('path','ff'),b:mk('path','fb'),c:mk('ellipse','tip')}; HANDS.tips[id].c.setAttribute('fill',TIPCOL[id]); }
+  HANDS.shadeL=mk('ellipse','shade'); HANDS.shadeR=mk('ellipse','shade');
+  try{ HANDS.on=localStorage.getItem('letterloper.hands')!=='0'; }catch(e){}
+  svg.classList.toggle('off',!HANDS.on); document.getElementById('btnHands').textContent=HANDS.on?'✋ handen aan':'✋ handen uit';
+  document.getElementById('btnHands').onclick=()=>{ HANDS.on=!HANDS.on; svg.classList.toggle('off',!HANDS.on); document.getElementById('btnHands').textContent=HANDS.on?'✋ handen aan':'✋ handen uit'; try{ localStorage.setItem('letterloper.hands',HANDS.on?'1':'0'); }catch(e){} };
+}
+// Welke vinger moet waarheen voor dit teken (null = alles terug naar de thuisrij)
+function handsTarget(ch){
+  for(const id in HANDS.tips){ const h=handsHome(id); HANDS.tips[id].tx=h.x; HANDS.tips[id].ty=h.y; }
+  if(!ch) return; const k=keyOf(ch), f=FINGER[k]||'th';
+  if(f==='th'){ const c=keyCenter(' ',40); HANDS.tips.rt.tx=c.x; HANDS.tips.rt.ty=c.y-4; }
+  else if(KEYS[k]){ const c=keyCenter(k); HANDS.tips[f].tx=c.x; HANDS.tips[f].ty=c.y; }
+  if(needsShift(ch)){ const sh=f[0]==='l'?'rshift':'lshift', c=keyCenter(sh); HANDS.tips[sh==='lshift'?'lp':'rp'].tx=c.x; HANDS.tips[sh==='lshift'?'lp':'rp'].ty=c.y; }
+}
+function drawHands(){
+  if(!HANDS.on) return; const kb=document.getElementById('kb'); const svg=HANDS.el; svg.setAttribute('width',kb.offsetWidth); svg.setAttribute('height',kb.offsetHeight);
+  const d=keyCenter(HOME.lm), f=keyCenter(HOME.li), j=keyCenter(HOME.ri), k=keyCenter(HOME.rm); const kw=KEYS[HOME.li].offsetWidth; const py=d.y+kw*3.0;
+  const L={x:(d.x+f.x)/2,y:py}, R={x:(j.x+k.x)/2,y:py};
+  // palm: afgeronde vorm met pols eronder, lichte schaduw bovenin
+  const palmPath=(P,side)=>{ const w=kw*1.75,h=kw*1.3,r=kw*0.9; const x0=P.x-w,x1=P.x+w,y0=P.y-h,y1=P.y+h; return `M${x0+r} ${y0} H${x1-r} Q${x1} ${y0} ${x1} ${y0+r} V${y1-r*0.6} Q${x1} ${y1} ${x1-r*0.6} ${y1} H${x0+r*0.6} Q${x0} ${y1} ${x0} ${y1-r*0.6} V${y0+r} Q${x0} ${y0} ${x0+r} ${y0} Z`; };
+  HANDS.palmL.setAttribute('d',palmPath(L,-1)); HANDS.palmR.setAttribute('d',palmPath(R,1));
+  for(const [wr,P] of [[HANDS.wristL,L],[HANDS.wristR,R]]){ wr.setAttribute('x',P.x-kw*1.1); wr.setAttribute('y',P.y+kw*0.8); wr.setAttribute('width',kw*2.2); wr.setAttribute('height',kw*2.5); wr.setAttribute('rx',kw*0.5); }
+  for(const [sh,P] of [[HANDS.shadeL,L],[HANDS.shadeR,R]]){ sh.setAttribute('cx',P.x); sh.setAttribute('cy',P.y-kw*0.3); sh.setAttribute('rx',kw*1.2); sh.setAttribute('ry',kw*0.5); }
+  // vingers: basis op de palm, lichte buiging naar buiten, taps toelopend (dikkere basislaag)
+  const base={lp:[L,-1.45,-0.9,0.46],lr:[L,-0.75,-1.2,0.52],lm:[L,0,-1.25,0.54],li:[L,0.75,-1.15,0.52],lt:[L,1.55,0.1,0.6],ri:[R,-0.75,-1.15,0.52],rm:[R,0,-1.25,0.54],rr:[R,0.75,-1.2,0.52],rp:[R,1.45,-0.9,0.46],rt:[R,-1.55,0.1,0.6]};
+  for(const id in HANDS.tips){ const t=HANDS.tips[id]; t.x+=(t.tx-t.x)*0.22; t.y+=(t.ty-t.y)*0.22; const [P,ox,oy,fw]=base[id]; const bx=P.x+ox*kw, by=P.y+oy*kw;
+    const thumb=id.endsWith('t'); const side=id[0]==='l'?-1:1; const bend=thumb?-side*kw*0.5:side*kw*0.18; const mx=(bx+t.x)/2+bend, my=(by+t.y)/2+(thumb?kw*0.2:0);
+    const dpath=`M${bx} ${by} Q${mx} ${my} ${t.x} ${t.y}`, dbase=`M${bx} ${by} Q${(bx+mx)/2} ${(by+my)/2} ${mx} ${my}`;
+    t.o.setAttribute('d',dpath); t.o.setAttribute('stroke-width',fw*kw+5); t.l.setAttribute('d',dpath); t.l.setAttribute('stroke-width',fw*kw); t.b.setAttribute('d',dbase); t.b.setAttribute('stroke-width',fw*kw*1.22);
+    const moving=Math.abs(t.tx-handsHome(id).x)>1||Math.abs(t.ty-handsHome(id).y)>1;
+    const ang=Math.atan2(t.y-my,t.x-mx)*180/Math.PI; t.c.setAttribute('cx',t.x); t.c.setAttribute('cy',t.y); t.c.setAttribute('rx',kw*(moving?0.3:0.24)); t.c.setAttribute('ry',kw*(moving?0.24:0.19)); t.c.setAttribute('transform',`rotate(${ang} ${t.x} ${t.y})`); }
+}
+function renderKb(){ const A=prof?allowed():new Set(); const caps=prof&&capsOn(); const shiftedKeys=Object.values(SHIFTED); for(const k in KEYS){ const el=KEYS[k]; const open=k==='lshift'||k==='rshift'?caps:(A.has(k)||(shiftedKeys.includes(k)&&Object.keys(SHIFTED).some(c=>SHIFTED[c]===k&&A.has(c)))); el.classList.toggle('locked',!open); el.classList.remove('next'); } }
+function renderPrompt(){
+  const pb=document.getElementById('promptbar'); const ob=G.active;
+  for(const k in KEYS) KEYS[k].classList.remove('next');
+  if(!ob||G.state!=='play'){ pb.hidden=true; if(G.state!=='practice') handsTarget(null); return; }
+  pb.hidden=false; const t=ob.text, sp=c=>c===' '?'sp':''; handsTarget(t[ob.pos]);
+  const html=[...t].map((c,i)=>`<span class="${i<ob.pos?'done':i===ob.pos?'cur':'rest'} ${sp(c)}">${c===' '?' ':c.replace('<','&lt;')}</span>`).join('');
+  pb.querySelector('.txt').innerHTML=html;
+  const want=t[ob.pos], k=keyOf(want), f=FINGER[k]||'th';
+  let hint=`<i style="background:${fcol(f)}"></i>${FNAME[f]}`;
+  if(KEYS[k]) KEYS[k].classList.add('next');
+  if(needsShift(want)){ const sh=f[0]==='l'?'rshift':'lshift'; KEYS[sh].classList.add('next'); hint+=` + Shift (${f[0]==='l'?'rechter':'linker'} pink)`; }
+  if(want===' ') hint=`<i style="background:${fcol('th')}"></i>spatie met je duim`;
+  pb.querySelector('.hint').innerHTML=hint;
+}
+function renderHUD(){ document.getElementById('score').textContent=G.score; document.getElementById('coins').textContent=G.coins; document.getElementById('combo').textContent=G.combo; document.getElementById('world').textContent=G.world; document.getElementById('worldLbl').textContent=G.mode==='house'?'Kamer':G.mode==='space'?'Sector':'Wereld'; document.getElementById('acc').textContent=(G.sessChars?Math.round(100*(1-G.sessErr/G.sessChars)):100)+'%'; document.getElementById('tempo').style.width=(prof?clamp(prof.speed/4*100,6,100):10)+'%'; }
+function renderMastery(){ if(!prof) return; const done=prof.stage>=GROUPS.length; document.getElementById('nextKeys').textContent=done?'alles vrij!':GROUPS[prof.stage].name; document.getElementById('mastery').style.width=(done?100:prof.mastery*100)+'%'; document.getElementById('stageTxt').textContent=`stap ${prof.stage}/${GROUPS.length}`; }
+function toast(txt,cls){ if(cls==='tip') return tip(txt); const box=document.getElementById('toasts'); while(box.children.length>=3) box.firstChild.remove(); const el=document.createElement('div'); el.className='toast '+(cls||''); el.textContent=txt; box.appendChild(el); setTimeout(()=>el.remove(),2800); }
+function tip(txt){ const bar=document.getElementById('tipbar'); bar.innerHTML=''; const el=document.createElement('div'); el.className='toast tip'; el.textContent=txt; bar.appendChild(el); setTimeout(()=>{ if(el.parentNode) el.remove(); },4200); }
+const BADGES=[
+  {id:'start',name:'Eerste stapjes',test:()=>prof.totalPrompts>=10},
+  {id:'woord',name:'Eerste woord',test:()=>prof.wordDone},
+  {id:'combo10',name:'Op dreef (combo 10)',test:()=>G.bestCombo>=10},
+  {id:'combo30',name:'Vingervlug (combo 30)',test:()=>G.bestCombo>=30},
+  {id:'c100',name:'100 letters',test:()=>prof.totalChars>=100},
+  {id:'c1000',name:'Duizendpoot (1000 letters)',test:()=>prof.totalChars>=1000},
+  {id:'spatie',name:'Duim erbij',test:()=>prof.stage>8},
+  {id:'snel',name:'Snelle vingers',test:()=>prof.speed>=2},
+  {id:'w3',name:'Wereldreiziger',test:()=>prof.worlds>=3},
+  {id:'huis',name:'Huisvriend (3 kamers)',test:()=>prof.rooms>=3},
+  {id:'items',name:'Verzamelaar (50 spulletjes)',test:()=>prof.items>=50},
+  {id:'alles',name:'Alle toetsen vrij',test:()=>prof.stage>=GROUPS.length},
+];
+function checkBadges(){ for(const b of BADGES){ if(!prof.badges.includes(b.id)&&b.test()){ prof.badges.push(b.id); toast('Badge: '+b.name,'badge'); SFX.badge(); } } }
+
+// ───────────────────────── Schermen ─────────────────────────
+const overlay=document.getElementById('overlay'),card=document.getElementById('card');
+let newColor=COLORS[0], newLevel='nieuw';
+function showMenu(){
+  if(G.hero&&prof&&G.state!=='over'&&G.sessChars>=10){ recordSession(); G.sessChars=0; save(); }
+  G.state='menu'; musicStop(); overlay.hidden=false; renderPrompt(); card.classList.remove('wide');
+  const names=Object.keys(DB.profiles);
+  card.innerHTML=`<h1>Letterloper</h1><p class="lead">Twee typ-spelletjes in het Nederlands. Je kunt niet af: elke fout maakt het spel even iets rustiger, en je krijgt een tip.</p>
+  <p>Je begint met <b>f</b> en <b>j</b> en leert telkens twee toetsen erbij. Goed getypt = sneller.</p>
+  ${names.length?'<p>Wie speelt er?</p>':''}<div class="profiles">${names.map(n=>{const p=DB.profiles[n];return `<button data-p="${n}"><span class="dot" style="background:${p.color}"></span><span>${n}<small>stap ${p.stage}/${GROUPS.length} · record ${p.best}</small></span></button>`;}).join('')}</div>
+  <div class="newprof"><input id="newName" placeholder="Nieuwe speler" maxlength="14" autocomplete="off"><div class="swatches">${COLORS.map(c=>`<div class="sw${c===newColor?' on':''}" data-c="${c}" style="background:${c}"></div>`).join('')}</div><button id="btnNew">Verder</button></div>
+  <p>Hoe goed kun je al typen?</p><div class="levels"><button class="${newLevel==='nieuw'?'on':''}" data-l="nieuw">Nog niet</button><button class="${newLevel==='beetje'?'on':''}" data-l="beetje">Een beetje</button><button class="${newLevel==='goed'?'on':''}" data-l="goed">Al best goed</button></div>
+  <div class="row" style="margin-top:18px"><button class="ghost" id="btnExp" style="font-size:.8rem;padding:6px 12px">Voortgang opslaan</button><button class="ghost" id="btnImp" style="font-size:.8rem;padding:6px 12px">Voortgang laden</button></div>`;
+  card.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{ audioInit(); prof=DB.profiles[b.dataset.p]; DB.last=prof.name; save(); showGames(); });
+  card.querySelectorAll('.sw').forEach(s=>s.onclick=()=>{ newColor=s.dataset.c; card.querySelectorAll('.sw').forEach(x=>x.classList.toggle('on',x===s)); });
+  card.querySelectorAll('[data-l]').forEach(s=>s.onclick=()=>{ newLevel=s.dataset.l; card.querySelectorAll('[data-l]').forEach(x=>x.classList.toggle('on',x===s)); });
+  const inp=card.querySelector('#newName'); const go=()=>{ const n=inp.value.trim(); if(!n) { inp.focus(); return; } audioInit(); if(!DB.profiles[n]) DB.profiles[n]=newProfile(n,newColor,newLevel); prof=DB.profiles[n]; DB.last=n; save(); showGames(); };
+  card.querySelector('#btnNew').onclick=go; inp.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); e.stopPropagation(); });
+  if(!names.length) inp.focus();
+  card.querySelector('#btnExp').onclick=showExport; card.querySelector('#btnImp').onclick=showImport;
+  if(('ontouchstart' in window)&&!window.matchMedia('(pointer:fine)').matches) card.insertAdjacentHTML('afterbegin','<p style="background:#0d1028;border:1px solid var(--bad);border-radius:10px;padding:8px">Dit spel heeft een echt toetsenbord nodig. Op een telefoon of tablet werkt het niet goed.</p>');
+}
+// Voortgang bewaren buiten de browser: als tekst kopiëren/plakken (werkt overal) en als bestand waar downloaden mag.
+function showExport(){
+  const json=JSON.stringify(DB); card.innerHTML=`<h2>Voortgang opslaan</h2><p>Kopieer deze tekst en bewaar hem (bijv. in een notitie). Op een andere computer plak je hem bij "Voortgang laden".</p><textarea id="expTxt" style="width:100%;height:120px;font-size:.7rem;background:#0d1028;color:var(--fg);border:1px solid var(--line);border-radius:8px" readonly>${json.replace(/</g,'&lt;')}</textarea><div class="row"><button id="cp">Kopiëren</button><button class="ghost" id="dl">Als bestand</button><button class="ghost" id="bk">Terug</button></div>`;
+  const ta=card.querySelector('#expTxt'); card.querySelector('#cp').onclick=()=>{ ta.select(); (navigator.clipboard&&navigator.clipboard.writeText(json)||Promise.reject()).then(()=>toast('Gekopieerd')).catch(()=>{ ta.select(); toast('Selecteer en kopieer met Ctrl+C'); }); };
+  card.querySelector('#dl').onclick=()=>{ try{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([json],{type:'application/json'})); a.download='letterloper-voortgang.json'; a.click(); }catch(e){ toast('Downloaden lukt hier niet; kopieer de tekst.'); } };
+  card.querySelector('#bk').onclick=showMenu;
+}
+function showImport(){
+  card.innerHTML=`<h2>Voortgang laden</h2><p>Plak hier de opgeslagen tekst. Spelers met dezelfde naam worden overschreven.</p><textarea id="impTxt" style="width:100%;height:120px;font-size:.7rem;background:#0d1028;color:var(--fg);border:1px solid var(--line);border-radius:8px"></textarea><div class="row"><button id="ok">Laden</button><button class="ghost" id="bk">Terug</button></div>`;
+  card.querySelector('#impTxt').addEventListener('keydown',e=>e.stopPropagation());
+  card.querySelector('#ok').onclick=()=>{ try{ const d=JSON.parse(card.querySelector('#impTxt').value); if(!d||!d.profiles) throw 0; Object.assign(DB.profiles,d.profiles); save(); toast('Geladen: '+Object.keys(d.profiles).join(', ')); showMenu(); }catch(e){ toast('Dat is geen geldige opslagtekst.'); } };
+  card.querySelector('#bk').onclick=showMenu;
+}
+function showGames(){
+  G.state='menu'; overlay.hidden=false;
+  card.innerHTML=`<h2>Wat wil je spelen, ${prof.name}?</h2>
+  <div class="games">
+    <button class="game" data-m="runner"><div class="pv"></div><b>Letterloper</b>Ren, spring en stamp door de werelden. Typ wat er boven elk obstakel staat voordat je held er is.</button>
+    <button class="game" data-m="house"><div class="pv house"></div><b>Poppenhuis</b>Poes Pip, Beer Bas, Robot Rik en Konijn Kiki hebben wensen. Typ ze voordat hun geduld op is en versier kamer na kamer.</button>
+    <button class="game" data-m="space"><div class="pv space"></div><b>Sterrenjager</b>Voor de grotere spelers. Elke toets is een laserschot: vernietig asteroïden, drones en kruisers voordat ze je schild raken. Donkere synths.</button>
+  </div>
+  <div class="levels"><button class="${prof.calm?'':'on'}" data-c="0">Met tijd</button><button class="${prof.calm?'on':''}" data-c="1">Zonder tijd (rustig leren)</button></div>
+  <p>Zonder tijd wacht alles tot je de letters hebt getypt. Je kunt dit tijdens het spel ook omzetten met de ⏱-knop.</p>
+  <div class="levels"><button class="${prof.story?'on':''}" id="tStory">Verhaaltjes (zinnen, gevorderd)</button><button class="${prof.apos?'on':''}" id="tApos">Apostrof-woorden ('s avonds)</button><button id="tHero">Held: ${['pet','antenne','strik'][prof.hero||0]}</button><button class="ghost" id="tLay">Indeling: ${(DB.layout||'qwerty').toUpperCase()}</button></div>
+  <div class="row"><button class="ghost" id="ana">Analyse: welke toetsen zitten erin?</button><button class="ghost" id="back">Andere speler</button></div>`;
+  card.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{ prof.mode=b.dataset.m; save(); startGame(); });
+  card.querySelector('#ana').onclick=()=>showAnalysis(showGames);
+  card.querySelector('#tStory').onclick=()=>{ prof.story=!prof.story; save(); showGames(); };
+  card.querySelector('#tApos').onclick=()=>{ prof.apos=!prof.apos; save(); showGames(); };
+  card.querySelector('#tHero').onclick=()=>{ prof.hero=((prof.hero||0)+1)%3; save(); showGames(); };
+  card.querySelector('#tLay').onclick=()=>{ setLayout((DB.layout||'qwerty')==='qwerty'?'azerty':'qwerty'); showGames(); };
+  card.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{ setCalm(b.dataset.c==='1'); card.querySelectorAll('[data-c]').forEach(x=>x.classList.toggle('on',x===b)); });
+  renderCalm();
+  card.querySelector('#back').onclick=showMenu;
+}
+// ───────────────────────── Analyse: heatmap over het toetsenbord ─────────────────────────
+function showAnalysis(back){
+  const prev=G.state; G.state='menu'; musicStop(); renderPrompt(); overlay.hidden=false; card.classList.add('wide');
+  const A=allowed(); const rows=[['q','w','e','r','t','y','u','i','o','p'],['a','s','d','f','g','h','j','k','l',';'],['z','x','c','v','b','n','m',',','.','/'],[' ']];
+  const col=r=>`hsl(${Math.round(r*120)} 80% 60%)`;
+  const key=k=>{ const st=prof.keys[k]; const open=A.has(k)||(k==='/'&&A.has('?')); if(!open||!st||!st.p) return `<div class="hk na${k===' '?' space':''}">${KEYLABEL[k]||k}<small>${open?'nog geen data':'nog dicht'}</small></div>`; const r=st.c/st.p; return `<div class="hk${k===' '?' space':''}" style="--hc:${col(r)}">${KEYLABEL[k]||k}<small>${Math.round(r*100)}% · ${st.p}×</small></div>`; };
+  const all=[...A].filter(k=>/[a-z ,.;]/.test(k)).map(k=>({k,st:prof.keys[k]})).filter(o=>o.st&&o.st.p>=3).map(o=>({k:o.k,r:o.st.c/o.st.p,p:o.st.p}));
+  const weak=all.filter(o=>o.r<0.8).sort((a,b)=>a.r-b.r).slice(0,5), strong=all.filter(o=>o.r>=0.9).sort((a,b)=>b.r-a.r||b.p-a.p).slice(0,5);
+  const nm=k=>k===' '?'spatie':k; const conf=k=>{ const c=prof.keys[k]&&prof.keys[k].conf; if(!c) return ''; const top=Object.entries(c).sort((a,b)=>b[1]-a[1])[0]; return top&&top[1]>=2?` · vaak verward met <b>${nm(top[0])}</b>`:''; };
+  const li=o=>`<li><b>${nm(o.k)}</b> ${Math.round(o.r*100)}% in één keer goed (${o.p}×) · ${FNAME[FINGER[o.k]||'th']}${conf(o.k)}</li>`;
+  const totP=all.reduce((s,o)=>s+o.p,0), totC=all.reduce((s,o)=>s+o.r*o.p,0);
+  const slow=[...A].filter(k=>/[a-z ,.;]/.test(k)).map(k=>({k,st:prof.keys[k]})).filter(o=>o.st&&o.st.mn>=4).map(o=>({k:o.k,ms:Math.round(o.st.ms/o.st.mn)})).sort((a,b)=>b.ms-a.ms).slice(0,5);
+  const hist=(prof.history||[]).slice(-7).reverse(); const hl=h=>`<li>${h.d.slice(5)} · ${h.m==='house'?'Poppenhuis':h.m==='space'?'Sterrenjager':'Letterloper'}: <b>${h.apm}</b> aanslagen/min, ${h.acc}% goed, ${h.chars} toetsen</li>`;
+  const rd=prof.roomsDone||{}; const roomsTxt=Object.keys(rd).length?Object.entries(rd).map(([n,c])=>`${n} ×${c}`).join(', '):'nog geen kamer af';
+  card.innerHTML=`<h2>Analyse van ${prof.name}</h2><p>Per toets: hoe vaak hij <b>in één keer</b> goed getypt werd. Groen = zit erin, rood = oefenen. Het spel kiest hier zelf al vaker opdrachten uit.</p>
+  <div class="heat">${rows.map(r=>`<div class="hrow">${r.map(key).join('')}</div>`).join('')}</div>
+  <div class="heatlegend"><span>vaak fout</span><i></i><span>bijna altijd goed</span></div>
+  <div class="stats"><div><b>${prof.totalChars}</b><span>toetsen getypt</span></div><div><b>${totP?Math.round(100*totC/totP):100}%</b><span>in één keer goed</span></div><div><b>${hist[0]?hist[0].apm:'–'}</b><span>aanslagen/min (laatst)</span></div><div><b>${streak()}</b><span>dagen reeks</span></div><div><b>${prof.stage}/${GROUPS.length}</b><span>stap</span></div><div><b>${prof.speed.toFixed(1)}×</b><span>tempo</span></div></div>
+  <div class="lists"><div><h3>Oefenen</h3>${weak.length?`<ul>${weak.map(li).join('')}</ul>`:'<p>Geen zwakke toetsen gevonden. Lekker bezig!</p>'}</div><div><h3>Zit er goed in</h3>${strong.length?`<ul>${strong.map(li).join('')}</ul>`:'<p>Nog te weinig data. Speel eerst een rondje.</p>'}</div>
+  <div><h3>Traagste toetsen (zoeken)</h3>${slow.length?`<ul>${slow.map(o=>`<li><b>${nm(o.k)}</b> ${o.ms} ms · ${FNAME[FINGER[o.k]||'th']}</li>`).join('')}</ul>`:'<p>Nog te weinig data.</p>'}</div>
+  <div><h3>Laatste sessies</h3>${hist.length?`<ul>${hist.map(hl).join('')}</ul>`:'<p>Nog geen sessie afgerond (stop via ■ of Esc).</p>'}<p style="margin-top:6px">Poppenhuis ingericht: ${roomsTxt}.</p></div></div>
+  <div class="row">${weak.length?'<button id="a1">Oefen de zwakke toetsen</button>':''}<button class="ghost" id="a2">Terug</button></div>`;
+  card.querySelector('#a2').onclick=()=>{ card.classList.remove('wide'); back(); };
+  const b1=card.querySelector('#a1'); if(b1) b1.onclick=()=>{ card.classList.remove('wide'); const ks=weak.slice(0,2).map(o=>o.k); const g={keys:ks.join(''),name:ks.map(nm).join(' en '),tip:'Rustig, met de juiste vinger. Dit is spiergeheugen: herhalen tot het vanzelf gaat.'}; showPractice(g); PR.back=back; };
+}
+function startGame(){
+  G.mode=prof.mode||'runner';
+  Object.assign(G,{world:1,obs:[],parts:[],pops:[],coins:0,score:0,combo:0,bestCombo:0,prompts:0,worldPrompts:0,sessChars:0,sessErr:0,shake:0,off:0,t:0,active:null,perfectRun:0,shelf:[],toyT:0.6,errTotal:0,bolts:[],shipY:H/2,shield:0,warp:0,sessMs:0,sessOk:0,lastKeyT:0,sessStart:Date.now(),sectorHits:0,storyIdx:0});
+  G.hero={y:GY,vy:0,g:1400,air:false,hurtT:0,fall:0,frame:0,ft:0}; G.v=G.vTarget=80; setBpm();
+  document.getElementById('logo').innerHTML=(G.mode==='house'?'Poppenhuis':G.mode==='space'?'Sterrenjager':'Letterloper')+'<small>Typ-avontuur</small>';
+  overlay.hidden=true; G.state='play'; renderKb(); renderMastery(); renderHUD(); renderCalm(); if(G.mode!=='house') spawnNext(); audioInit(); musicStart();
+  toast(G.mode==='house'?'Welkom in de '+room().name+', '+prof.name+'!':G.mode==='space'?'Schilden op, '+prof.name+'. Typ om te vuren.':'Hoi '+prof.name+'! Vingers op f en j.');
+  renderGoal();
+  if(!prof.practised){ prof.practised=true; save(); showPractice(GROUPS[prof.stage-1],true); }
+  // Warming-up (spaced repetition): zwakke toetsen van een vorige dag eerst even los oefenen.
+  else if(prof.weak&&prof.weak.length&&prof.lastDay&&prof.lastDay!==todayKey()){ const ks=prof.weak.slice(0,2); showPractice({keys:ks.join(''),name:'warming-up: '+ks.map(k=>k===' '?'spatie':k).join(' en '),tip:'Deze gingen de vorige keer het vaakst mis. Even rustig opfrissen, dan het spel in.'}); }
+  prof.lastDay=todayKey(); save();
+}
+function apm(){ const min=(Date.now()-G.sessStart)/60000; return min>0.2?Math.round(G.sessOk/min):0; }
+function recordSession(){ if(G.sessChars<10) return; prof.history=prof.history||[]; const acc=Math.round(100*(1-G.sessErr/G.sessChars)); prof.history.push({d:todayKey(),m:G.mode,chars:G.sessChars,acc,apm:apm(),score:G.score}); if(prof.history.length>40) prof.history.shift(); }
+// Oefenmoment zonder tijdsdruk: eerst de nieuwe toets los, dan afgewisseld met een bekende (losse oefening → combineren → in het spel).
+const PR={seq:[],i:0};
+function drillFor(g){
+  const A=[...allowed()].filter(c=>/[a-z]/.test(c));
+  if(g.caps){ const ks=A.slice(0,4); return ks.concat(ks).map(c=>c.toUpperCase()); }
+  if(g.keys===' '){ return [' ',' ',' ','f',' ','j',' ','d',' ','k',' ','a',' ','s',' ']; }
+  const k=[...g.keys]; const known=A.filter(c=>!k.includes(c)); const buddy=known[known.length-1]||k[0];
+  if(k.includes(' ')){ const o=k.find(c=>c!==' ')||buddy; return [o,' ',o,' ',buddy,' ',o,' ',o,' ',buddy,' ']; }
+  if(k.length===1){ const a=k[0]; return [a,a,a,a,buddy,a,buddy,a,a,buddy,a,a]; }
+  const [a,b]=k; return [a,a,a,b,b,b,a,b,a,b,b,a,a,b];
+}
+function showPractice(g,first){
+  G.state='practice'; renderPrompt(); overlay.hidden=false; PR.seq=drillFor(g); PR.i=0; PR.back=null;
+  card.innerHTML=`<h2>${first?'Even oefenen: ':'Oefenen: '}${g.name}</h2><p class="lead">${g.tip}</p><p>${first?'Leg je handen neer zoals de handen op het toetsenbord hieronder: vingers op de thuisrij, duimen op de spatiebalk. ':''}Geen haast. Typ de toets die je ziet; kijk welke vinger beweegt.</p>
+  <div class="practice"><div class="big" id="prBig"></div><div class="fing" id="prFing"></div><div class="dots" id="prDots">${PR.seq.map(()=>'<i></i>').join('')}</div></div><p id="prMsg"></p>`;
+  renderPractice();
+}
+function renderPractice(){
+  const big=card.querySelector('#prBig'); if(!big) return;
+  handsTarget(PR.i<PR.seq.length?PR.seq[PR.i]:null);
+  if(PR.i>=PR.seq.length){ big.textContent='★'; big.classList.add('ok'); big.style.setProperty('--kc','var(--accent)'); card.querySelector('#prFing').textContent='Goed zo!'; card.querySelector('#prMsg').innerHTML='<button id="prGo">Verder (Enter)</button>'; card.querySelector('#prGo').onclick=practiceDone; SFX.unlock(); for(const k in KEYS) KEYS[k].classList.remove('next'); return; }
+  const ch=PR.seq[PR.i], k=keyOf(ch), f=FINGER[k]||'th';
+  big.textContent=ch===' '?'spatie':ch; big.classList.toggle('sp',ch===' '); big.style.setProperty('--kc',fcol(f));
+  card.querySelector('#prFing').innerHTML=`<i style="background:${fcol(f)}"></i>${FNAME[f]}${needsShift(ch)?` + Shift (${f[0]==='l'?'rechter':'linker'} pink)`:''}`;
+  card.querySelectorAll('#prDots i').forEach((d,i)=>{ d.classList.toggle('on',i<PR.i); d.classList.toggle('cur',i===PR.i); });
+  for(const kk in KEYS) KEYS[kk].classList.remove('next'); if(KEYS[k]) KEYS[k].classList.add('next'); if(needsShift(ch)) KEYS[f[0]==='l'?'rshift':'lshift'].classList.add('next');
+}
+function practiceDone(){ if(PR.back){ const b=PR.back; PR.back=null; G.state='menu'; b(); } else resume(); }
+function practiceKey(key){
+  if(PR.i>=PR.seq.length){ if(key==='Enter') practiceDone(); return; }
+  if(key.length!==1) return; const ch=PR.seq[PR.i], big=card.querySelector('#prBig');
+  if(key===ch){ PR.i++; SFX.tick(PR.i/PR.seq.length); big.classList.add('ok'); setTimeout(()=>big.classList.remove('ok'),120); pressKey(keyOf(ch),false); if(PR.i===PR.seq.length) SFX.happy(); }
+  else { SFX.error(); big.classList.remove('bad'); void big.offsetWidth; big.classList.add('bad'); pressKey(keyOf(key),true); card.querySelector('#prMsg').textContent=tipFor(ch,key); }
+  renderPractice();
+}
+function pause(){ if(G.state!=='play') return; G.state='pause'; musicStop(); renderPrompt(); overlay.hidden=false; card.innerHTML=`<h2>Pauze</h2><p>Even uitrusten. Handen weer op de thuisrij als je verder gaat.</p>${volControls()}<div class="row"><button id="b1">Verder (Esc)</button><button class="ghost" id="b4">Toetsen oefenen</button><button class="ghost" id="b5">Analyse</button><button class="ghost" id="b3">Stoppen en score zien</button><button class="ghost" id="b2">Hoofdmenu</button></div>`; bindVols(); card.querySelector('#b1').onclick=resume; card.querySelector('#b2').onclick=showMenu; card.querySelector('#b3').onclick=summary; card.querySelector('#b4').onclick=()=>showPractice(GROUPS[prof.stage-1]); card.querySelector('#b5').onclick=()=>showAnalysis(pauseCard); }
+function pauseCard(){ G.state='play'; pause(); }
+function resume(){ overlay.hidden=true; G.state='play'; renderPrompt(); maybeSpawn(); if(mus.on===false) musicStart(); }
+function showUnlock(){
+  const g=GROUPS[prof.stage-1]; G.state='unlock'; renderKb(); renderPrompt(); overlay.hidden=false; SFX.unlock();
+  const keys=[...g.keys].map(k=>`<div class="bigkey" style="--kc:${fcol(FINGER[k]||'th')}">${k===' '?'␣':k}</div>`).join('');
+  card.innerHTML=`<h2>Nieuw: ${g.name}!</h2><div class="bigkeys">${g.caps?'<div class="bigkey" style="--kc:var(--f-pink);font-size:1.2rem">Shift</div>':keys}</div><p class="lead">${g.tip}</p><p>Druk op Enter om eerst rustig te oefenen.</p><div class="row"><button id="b1">Oefenen</button></div>`;
+  card.querySelector('#b1').onclick=()=>showPractice(g);
+  [...g.keys].forEach(k=>KEYS[keyOf(k)]&&KEYS[keyOf(k)].classList.add('next'));
+  toast('Nieuwe toetsen: '+g.name);
+}
+function summary(){
+  if(G.state==='over') return; G.state='over'; musicStop(); renderPrompt(); G.active=null;
+  const acc=G.sessChars?Math.round(100*(1-G.sessErr/G.sessChars)):100; const rec=G.score>prof.best; if(rec) prof.best=G.score; recordSession(); prof.weak=weakKeys().slice(0,3); save();
+  overlay.hidden=false;
+  card.innerHTML=`<h2>${rec?'Nieuw record!':'Goed gespeeld, '+prof.name+'!'}</h2>
+  <div class="stats"><div><b>${G.score}</b><span>punten</span></div><div><b>${G.sessChars}</b><span>letters</span></div><div><b>${acc}%</b><span>goed</span></div><div><b>${apm()}</b><span>aanslagen/min</span></div><div><b>${G.bestCombo}</b><span>beste combo</span></div><div><b>${G.coins}</b><span>munten</span></div><div><b>${G.world}</b><span>${G.mode==='house'?'kamer':G.mode==='space'?'sector':'wereld'}</span></div></div>
+  <p>Je staat op stap ${prof.stage} van ${GROUPS.length}. Je voortgang is bewaard.</p>
+  ${prof.badges.length?`<div class="badgelist">${prof.badges.map(id=>BADGES.find(b=>b.id===id)).filter(Boolean).map(b=>`<span>${b.name}</span>`).join('')}</div>`:''}
+  <div class="row"><button id="b1">Nog een keer (Enter)</button><button class="ghost" id="b4">Analyse</button><button class="ghost" id="b2">Ander spel</button><button class="ghost" id="b3">Hoofdmenu</button></div>`;
+  card.querySelector('#b1').onclick=startGame; card.querySelector('#b2').onclick=showGames; card.querySelector('#b3').onclick=showMenu; card.querySelector('#b4').onclick=()=>showAnalysis(summary);
+}
+function setCalm(v){ if(!prof) return; prof.calm=v; save(); renderCalm(); if(G.state==='play'){ toast(v?'Zonder tijd: alles wacht op jou.':'Met tijd: de obstakels komen eraan!'); if(G.mode==='house'&&G.active) G.active.timer=0; else if(!v&&G.active) G.vTarget=Math.max(G.vTarget,clamp((G.active.x-HX-30)/budget(G.active.text.length),50,460)); } }
+function renderCalm(){ const b=document.getElementById('btnCalm'); const c=!!(prof&&prof.calm); b.textContent=c?'⏱ zonder tijd':'⏱ met tijd'; b.style.background=c?'var(--good)':''; b.style.color=c?'#062a10':''; }
+document.getElementById('btnCalm').onclick=()=>setCalm(!(prof&&prof.calm));
+document.getElementById('btnStop').onclick=()=>{ if(G.state==='play'||G.state==='pause'||G.state==='unlock'||G.state==='practice') summary(); else if(G.state!=='menu') showMenu(); };
+document.getElementById('btnPause').onclick=()=>G.state==='play'?pause():G.state==='pause'?resume():0;
+document.getElementById('btnMute').onclick=()=>{ DB.muted=!DB.muted; save(); applyVol(); document.getElementById('btnMute').style.opacity=DB.muted?.5:1; };
+function volControls(){ return `<div class="vols"><label>Muziek <input type="range" id="vMus" min="0" max="1" step="0.05" value="${DB.musicVol??0.8}"></label><label>Effecten <input type="range" id="vSfx" min="0" max="1" step="0.05" value="${DB.sfxVol??1}"></label></div>`; }
+function bindVols(){ const m=card.querySelector('#vMus'), s=card.querySelector('#vSfx'); if(m) m.oninput=()=>{ DB.musicVol=+m.value; save(); applyVol(); }; if(s) s.oninput=()=>{ DB.sfxVol=+s.value; save(); applyVol(); SFX.coin(); }; }
+document.addEventListener('visibilitychange',()=>{ if(document.hidden&&G.state==='play') pause(); });
+
+// ───────────────────────── Deeltjes & tekst-pops ─────────────────────────
+function burst(x,y,col,n){ for(let i=0;i<n;i++) G.parts.push({x,y,vx:rnd(-160,160),vy:rnd(-260,-40),col,t:rnd(0.4,0.8)}); }
+function pop(x,y,txt,col){ G.pops.push({x,y,txt,col,t:1}); }
+
+// ───────────────────────── Poppenhuis-logica ─────────────────────────
+function wishDone(ob){
+  const perfect=ob.errors===0; ob.anim=0.6; SFX.happy(); SFX.sparkle();
+  const item=ITEMS[Math.floor(Math.random()*ITEMS.length)]; G.shelf.push(item); prof.items++;
+  burst(ob.x+24,GY-80,'#fff176',16); pop(ob.x+24,GY-150,perfect?'Dankjewel!':'Fijn!',perfect?'#5be37d':'#fff');
+  pop(ob.x+24,GY-185,'+ '+item.n,'#ffcc3d');
+  if(G.shelf.length>=12){ prof.roomsDone=prof.roomsDone||{}; prof.roomsDone[room().name]=(prof.roomsDone[room().name]||0)+1; setTimeout(()=>{ G.world++; prof.rooms=Math.max(prof.rooms,G.world); G.shelf=[]; G.coins+=20; prof.coins+=20; SFX.flag(); toast('Kamer klaar! Nu: '+room().name); burst(480,200,'#ff7eb6',40); burst(480,200,'#4fd1ff',40); renderHUD(); },700); }
+}
+// ───────────────────────── Sterrenjager-logica ─────────────────────────
+function spaceDestroy(ob,perfect){
+  ob.gone=true; SFX.explode(); G.shake=0.25;
+  const col=ob.type==='asteroid'?'#b0a090':ob.type==='drone'?'#ff6b6b':ob.type==='cruiser'?'#9fb3c8':ob.type==='boss'?'#c084fc':'#8ff0ff';
+  burst(ob.x+ob.w/2,ob.y,col,ob.type==='cruiser'?40:ob.type==='boss'?90:22); burst(ob.x+ob.w/2,ob.y,'#ffd166',ob.type==='boss'?40:12);
+  const bonus=ob.type==='cruiser'?60:ob.type==='comet'?100:ob.type==='drone'?30:ob.type==='boss'?250:10; addScore(bonus); if(ob.type==='boss'){ G.shake=0.8; SFX.explode(); setTimeout(()=>SFX.explode(),180); }
+  if(ob.type==='comet'){ G.coins+=10; prof.coins+=10; } else if(ob.type==='cruiser'){ G.coins+=5; prof.coins+=5; }
+  pop(ob.x+ob.w/2,ob.y-40,perfect?'Voltreffer!':'Vernietigd',perfect?'#8ff0ff':'#fff'); if(bonus>10) pop(ob.x+ob.w/2,ob.y-75,'+'+bonus,'#ffd166');
+}
+function spaceHit(ob){ ob.gone=true; G.shake=0.6; G.shield=1; G.sectorHits++; SFX.shield(); burst(HX+40,G.shipY,'#4fd1ff',20); pop(HX+60,G.shipY-60,'Schild geraakt!','#ff6b6b'); G.combo=0; adapt(ob,'miss'); finishPrompt(ob); }
+function wishFail(ob){ ob.mood=1.4; SFX.sad(); pop(ob.x+24,GY-150,'Volgende keer!','#aab'); G.combo=0; adapt(ob,'miss'); finishPrompt(ob); }
+
+// ───────────────────────── Update ─────────────────────────
+function update(dt){
+  G.t+=dt; const hero=G.hero;
+  if(G.mode==='space'){
+    maybeSpawn(); const a=G.active; if(prof.calm&&a&&!a.solved&&a.x<=HX+260) G.vTarget=0;
+    G.v+=(G.vTarget-G.v)*Math.min(1,dt*(G.vTarget===0?6:3)); G.off+=G.v*dt;
+    G.shipY+=(H/2+Math.sin(G.t*1.3)*18+(a?(a.y-H/2)*0.35:0)-G.shipY)*Math.min(1,dt*2.5);
+    for(const ob of G.obs){ ob.x-=G.v*dt; ob.rot+=dt*0.8; ob.appear=Math.min(1,(ob.appear||0)+dt*3); if(!ob.resolved&&!ob.solved&&ob.x<=HX+70) spaceHit(ob); }
+    G.obs=G.obs.filter(o=>!o.gone&&o.x>-200);
+    for(const b of G.bolts) b.t-=dt; G.bolts=G.bolts.filter(b=>b.t>0);
+    if(G.shield>0) G.shield-=dt; if(G.warp>0) G.warp-=dt;
+    for(const p of G.parts){ p.t-=dt; p.x+=p.vx*dt-G.v*dt*0.3; p.y+=p.vy*dt; p.vy*=0.98; } G.parts=G.parts.filter(p=>p.t>0);
+    for(const p of G.pops){ p.t-=dt*0.9; p.y-=40*dt; } G.pops=G.pops.filter(p=>p.t>0);
+    if(G.shake>0) G.shake-=dt; return;
+  }
+  if(G.mode==='house'){ G.toyT-=dt; maybeSpawn();
+    for(const ob of G.obs){ ob.appear=Math.min(1,ob.appear+dt*3); if(ob.anim>0) ob.anim-=dt; if(ob.mood>0) ob.mood-=dt; if(ob===G.active&&!prof.calm){ ob.timer+=dt; if(ob.timer>=ob.T) wishFail(ob); } else if(ob.resolved){ ob.leave=(ob.leave||0)+dt; if(ob.leave>1.2) ob.gone=true; } }
+    G.obs=G.obs.filter(o=>!o.gone);
+  } else {
+    maybeSpawn();
+    // Rustig-modus: het obstakel stopt vlak voor de held en wacht tot het getypt is.
+    const a=G.active; if(prof.calm&&a&&!a.solved&&a.x<=HX+150) G.vTarget=0;
+    G.v+=(G.vTarget-G.v)*Math.min(1,dt*(G.vTarget===0?6:3)); G.off+=G.v*dt;
+    for(const ob of G.obs){
+      ob.x-=G.v*dt; ob.appear=Math.min(1,(ob.appear===undefined?1:ob.appear)+dt*3);
+      if(ob.squash!==undefined&&ob.squash>0){ ob.squash-=dt; if(ob.squash<=0) ob.gone=true; }
+      if(ob.bump>0) ob.bump-=dt;
+      if(!ob.triggered&&ob.x<=HX+(ob.type==='pit'?46:30)){ ob.triggered=true;
+        if(ob.type==='flag'){ G.world++; prof.worlds=Math.max(prof.worlds,G.world); G.coins+=20; prof.coins+=20; SFX.flag(); toast('Wereld '+G.world+': '+theme().name); pop(HX+24,GY-150,'Wereld '+G.world+'!','#ffcc3d'); burst(HX+24,GY-60,'#ffcc3d',30); renderHUD(); }
+        else if(ob.solved) doAction(ob); else if(!ob.resolved) doFail(ob);
+      }
+    }
+    G.obs=G.obs.filter(o=>o.x>-300&&!o.gone);
+    if(hero.fall>0){ hero.fall-=dt; hero.y+=220*dt; if(hero.fall<=0){ hero.y=GY; hero.vy=0; hero.air=false; } }
+    else if(hero.air){ hero.vy+=hero.g*dt; hero.y+=hero.vy*dt; if(hero.y>=GY){ hero.y=GY; hero.air=false; hero.vy=0; burst(HX+24,GY,'#ffffff88',3); } }
+    if(hero.hurtT>0) hero.hurtT-=dt;
+    hero.ft+=dt*(4+G.v/40); hero.frame=Math.floor(hero.ft)%2;
+  }
+  for(const p of G.parts){ p.t-=dt; p.vy+=600*dt; p.x+=p.vx*dt-(G.mode==='house'?0:G.v*dt); p.y+=p.vy*dt; }
+  G.parts=G.parts.filter(p=>p.t>0);
+  for(const p of G.pops){ p.t-=dt*0.9; p.y-=40*dt; if(G.mode!=='house') p.x-=G.v*dt*0.5; }
+  G.pops=G.pops.filter(p=>p.t>0);
+  if(G.shake>0) G.shake-=dt;
+}
+
+// ───────────────────────── Tekenen ─────────────────────────
+function drawSign(ob,bx,by){
+  cx.font='bold 26px Fredoka, Nunito, sans-serif'; cx.textAlign='center'; const tw=cx.measureText(ob.text).width+28;
+  const ax=bx; bx=clamp(bx,tw/2+10,W-tw/2-10);
+  cx.fillStyle=ob===G.active?'#0d1028ee':'#0d102899'; rr(bx-tw/2,by-24,tw,40,8); cx.fill();
+  if(ob===G.active){ cx.strokeStyle='#ffcc3d'; cx.lineWidth=3; rr(bx-tw/2,by-24,tw,40,8); cx.stroke(); }
+  cx.textAlign='left'; let px=bx-tw/2+14;
+  for(let i=0;i<ob.text.length;i++){ const c=ob.text[i]; const w=cx.measureText(c).width; if(i===ob.pos&&ob===G.active){ cx.fillStyle='#ffcc3d'; cx.fillRect(px-2,by-18,w+4,30); cx.fillStyle='#1a1200'; } else cx.fillStyle=i<ob.pos?'#5be37d':'#fff'; if(c===' '){ cx.fillRect(px+2,by+2,w-4,3); } else cx.fillText(c,px,by+6); px+=w; }
+  const tx=clamp(ax,bx-tw/2+12,bx+tw/2-12); cx.fillStyle=ob===G.active?'#ffcc3d':'#0d102899'; cx.beginPath(); cx.moveTo(tx-8,by+16); cx.lineTo(tx+8,by+16); cx.lineTo(tx,by+26); cx.fill();
+}
+function drawHouse(){
+  const r=room(); cx.save(); if(G.shake>0) cx.translate(rnd(-4,4)*G.shake,rnd(-4,4)*G.shake);
+  const g=cx.createLinearGradient(0,0,0,GY); g.addColorStop(0,r.wall); g.addColorStop(1,r.wall2); cx.fillStyle=g; cx.fillRect(-20,-20,W+40,H+40);
+  if(r.outside){ cx.fillStyle='#fff'; [[120,70],[420,50],[700,90]].forEach(([x,y])=>{cx.fillRect(x,y,90,22);cx.fillRect(x+20,y-14,46,16);}); cx.fillStyle='#fff2a8'; cx.beginPath(); cx.arc(860,80,34,0,7); cx.fill(); }
+  else { // behang-stipjes, raam, plint
+    cx.fillStyle='#ffffff55'; for(let y=40;y<GY-40;y+=48) for(let x=((y/48)%2)*24;x<W;x+=48) cx.fillRect(x,y,6,6);
+    cx.fillStyle='#ffffff'; cx.fillRect(392,60,176,130); cx.fillStyle=r.win; cx.fillRect(400,68,160,114); cx.fillStyle='#ffffff'; cx.fillRect(477,68,6,114); cx.fillRect(400,122,160,6);
+    if(r.name==='Zolder'){ cx.fillStyle='#fff'; for(let i=0;i<12;i++) cx.fillRect(410+(i*37)%150,75+(i*53)%100,3,3); }
+  }
+  // plank met verzamelde spulletjes
+  cx.fillStyle=r.trim; cx.fillRect(60,246,840,10); cx.fillStyle='#00000022'; cx.fillRect(60,256,840,4);
+  G.shelf.forEach((it,i)=>sprite(it.map,80+i*68,205,5,it.pal));
+  for(let i=G.shelf.length;i<12;i++){ cx.fillStyle='#00000012'; cx.fillRect(80+i*68+4,228,32,14); }
+  // vloer
+  cx.fillStyle=r.floor; cx.fillRect(0,GY,W,H-GY); cx.fillStyle='#00000018'; for(let x=0;x<W;x+=80) cx.fillRect(x,GY,2,H-GY); cx.fillRect(0,GY,W,6);
+  cx.fillStyle=r.trim; cx.fillRect(0,GY-8,W,8);
+  // speelgoed
+  for(const ob of G.obs){
+    const a=ob.appear, bounce=ob.anim>0?Math.abs(Math.sin(ob.anim*14))*26:0, sad=ob.mood>0?Math.sin(ob.mood*20)*4:0;
+    const y=GY-48-bounce+(ob.resolved&&!ob.solved?6:0), sc=a<1?0.6+0.4*a:1;
+    cx.save(); cx.translate(ob.x+24+sad,y+48); cx.scale(sc,sc); cx.globalAlpha=ob.resolved?Math.max(0,1-(ob.leave||0)):1;
+    cx.fillStyle='#00000022'; cx.beginPath(); cx.ellipse(0,2,24,5,0,0,7); cx.fill();
+    sprite(ob.toy.map,-24,-48,4,ob.toy.pal); cx.restore(); cx.globalAlpha=1;
+    if(ob.resolved&&!ob.solved){ cx.fillStyle='#4fd1ff'; cx.fillRect(ob.x+30,y-6+ (G.t*40%12),4,8); }
+    if(ob===G.active){ drawSign(ob,ob.x+24,y-60);
+      // geduldbalk
+      const frac=prof.calm?1:1-ob.timer/ob.T; cx.fillStyle='#0d102899'; rr(ob.x-16,y+56,80,10,5); cx.fill(); cx.fillStyle=frac>0.5?'#5be37d':frac>0.25?'#ffcc3d':'#ff5f6d'; rr(ob.x-16,y+56,80*Math.max(0.02,frac),10,5); cx.fill(); }
+    cx.font='bold 15px Nunito, sans-serif'; cx.textAlign='center'; cx.fillStyle='#0d1028aa'; cx.fillText(ob.toy.name,ob.x+24,y+84);
+  }
+  cx.font='bold 20px Fredoka, sans-serif'; cx.textAlign='left'; cx.fillStyle='#0d102899'; cx.fillText(r.name+' · '+G.shelf.length+'/12 spulletjes',20,GY+40);
+  drawFx(); cx.restore();
+}
+function drawFx(){
+  for(const p of G.parts){ cx.globalAlpha=Math.min(1,p.t*2); cx.fillStyle=p.col; cx.fillRect(p.x,p.y,6,6); } cx.globalAlpha=1;
+  for(const p of G.pops){ cx.globalAlpha=Math.min(1,p.t*1.5); cx.font='bold 26px Fredoka, sans-serif'; cx.textAlign='center'; cx.lineWidth=5; cx.strokeStyle='#0d1028'; cx.strokeText(p.txt,p.x,p.y); cx.fillStyle=p.col; cx.fillText(p.txt,p.x,p.y); } cx.globalAlpha=1;
+}
+function drawSpace(){
+  const sc=sector(); cx.save(); if(G.shake>0) cx.translate(rnd(-5,5)*G.shake,rnd(-5,5)*G.shake);
+  const g=cx.createLinearGradient(0,0,0,H); g.addColorStop(0,sc.bg[0]); g.addColorStop(1,sc.bg[1]); cx.fillStyle=g; cx.fillRect(-20,-20,W+40,H+40);
+  // nevels
+  for(const [nx,ny,r,c] of [[((700-G.off*0.05)%(W+600)+W+600)%(W+600)-300,180,260,sc.neb],[((200-G.off*0.08)%(W+600)+W+600)%(W+600)-300,380,200,sc.neb2]]){ const rg=cx.createRadialGradient(nx,ny,0,nx,ny,r); rg.addColorStop(0,c+'66'); rg.addColorStop(1,c+'00'); cx.fillStyle=rg; cx.fillRect(nx-r,ny-r,r*2,r*2); }
+  // sterren in drie lagen (warp = strepen)
+  const warp=G.warp>0?Math.min(1,G.warp):0;
+  for(let L=1;L<=3;L++){ cx.fillStyle=L===3?'#ffffff':L===2?'#c8d4ff':'#7a86b8'; for(let i=0;i<40;i++){ const x=((i*137+L*53-G.off*(0.15*L))%(W+20)+W+20)%(W+20)-10, y=(i*97+L*31)%H; const len=1+warp*40*L; cx.fillRect(x-len,y,len+L,L); } }
+  // doelen
+  for(const ob of G.obs){
+    const x=ob.x, y=ob.y; cx.save(); cx.translate(x+ob.w/2,y); const ap=ob.appear===undefined?1:ob.appear; cx.scale(0.3+0.7*ap,0.3+0.7*ap); cx.globalAlpha=0.3+0.7*ap;
+    if(ob.type==='asteroid'){ cx.rotate(ob.rot); cx.fillStyle='#8a7a6a'; cx.beginPath(); for(let i=0;i<9;i++){ const a=i/9*Math.PI*2, r=26+((i*7)%3)*5; cx.lineTo(Math.cos(a)*r,Math.sin(a)*r);} cx.closePath(); cx.fill(); cx.fillStyle='#5a4e44'; cx.beginPath(); cx.arc(-6,-4,6,0,7); cx.fill(); cx.beginPath(); cx.arc(9,8,4,0,7); cx.fill(); }
+    else if(ob.type==='drone'){ cx.translate(-24,-14); sprite(DRONE,0,0,4,{r:'#ff6b6b',k:'#1a0a0a'}); cx.fillStyle='#ff2244'; cx.globalAlpha=0.5+0.5*Math.sin(G.t*10); cx.fillRect(12,8,8,8); cx.fillRect(28,8,8,8); cx.globalAlpha=1; }
+    else if(ob.type==='boss'){ cx.fillStyle='#4a2a6a'; cx.fillRect(-90,-30,180,60); cx.fillStyle='#7a4aa8'; cx.fillRect(-70,-44,120,16); cx.fillRect(-60,30,100,12); cx.fillStyle='#c084fc'; cx.fillRect(-90,-10,16,20); cx.fillStyle='#ff2244'; cx.globalAlpha=0.6+0.4*Math.sin(G.t*6); for(let i=0;i<6;i++) cx.fillRect(-60+i*24,-6,12,12); cx.globalAlpha=1; cx.fillStyle='#ffd166'; cx.fillRect(-30,-30,60,6); }
+    else if(ob.type==='cruiser'){ cx.fillStyle='#6f8399'; cx.fillRect(-55,-14,110,28); cx.fillStyle='#9fb3c8'; cx.fillRect(-45,-22,70,10); cx.fillRect(-30,14,50,8); cx.fillStyle='#ff6b6b'; cx.fillRect(-55,-6,10,12); cx.fillStyle='#4fd1ff'; for(let i=0;i<5;i++) cx.fillRect(-35+i*16,-4,8,6); }
+    else { cx.fillStyle='#8ff0ff'; cx.beginPath(); cx.arc(0,0,14,0,7); cx.fill(); cx.globalAlpha=0.4; cx.fillStyle='#bff8ff'; cx.beginPath(); cx.moveTo(0,-10); cx.lineTo(120,-30); cx.lineTo(120,30); cx.lineTo(0,10); cx.fill(); cx.globalAlpha=1; }
+    cx.restore();
+    if(ob.hp>0&&!ob.solved){ cx.fillStyle='#ff6b6b55'; cx.fillRect(x,y+40,ob.w,5); cx.fillStyle='#ff6b6b'; cx.fillRect(x,y+40,ob.w*ob.hp,5); }
+    if(ob.text&&!ob.resolved) drawSign(ob,x+ob.w/2,y-62);
+  }
+  // laserschoten
+  for(const b of G.bolts){ cx.strokeStyle='#8ff0ff'; cx.lineWidth=3; cx.globalAlpha=Math.min(1,b.t*10); cx.beginPath(); cx.moveTo(b.x1,b.y1); cx.lineTo(b.x2,b.y2); cx.stroke(); cx.strokeStyle='#ffffff'; cx.lineWidth=1; cx.stroke(); cx.globalAlpha=1; }
+  // schip
+  const sy=G.shipY; cx.save(); cx.translate(HX,sy-18); const flame=8+Math.sin(G.t*40)*4+G.v*0.03; cx.fillStyle='#ff9f43'; cx.fillRect(-flame,10,flame,8); cx.fillRect(-flame,18,flame,8); cx.fillStyle='#fff3b0'; cx.fillRect(-flame*0.5,13,flame*0.5,10);
+  sprite(SHIP,0,0,4,{b:prof.color,w:'#e8eef8',c:'#4fd1ff'}); cx.restore();
+  if(G.shield>0){ cx.strokeStyle='#4fd1ff'; cx.lineWidth=3; cx.globalAlpha=G.shield; cx.beginPath(); cx.ellipse(HX+34,sy,52,34,0,0,7); cx.stroke(); cx.globalAlpha=1; }
+  cx.font='bold 18px Fredoka, sans-serif'; cx.textAlign='left'; cx.fillStyle='#ffffff88'; cx.fillText('Sector '+G.world+' · '+sc.name,20,H-20);
+  drawFx(); cx.restore();
+}
+function draw(){
+  if(G.mode==='house'){ drawHouse(); return; }
+  if(G.mode==='space'){ drawSpace(); return; }
+  const th=theme(); cx.save();
+  if(G.shake>0) cx.translate(rnd(-6,6)*G.shake*2,rnd(-6,6)*G.shake*2);
+  const sky=cx.createLinearGradient(0,0,0,GY); sky.addColorStop(0,th.sky[0]); sky.addColorStop(1,th.sky[1]); cx.fillStyle=sky; cx.fillRect(-20,-20,W+40,H+40);
+  if(th.stars){ cx.fillStyle='#fff'; for(let i=0;i<40;i++){ const x=((i*197+G.t*8*((i%3)+1))%(W+40))-20, y=(i*83)%(GY-120); cx.globalAlpha=0.5+0.5*Math.sin(G.t*3+i); cx.fillRect(x,y,3,3);} cx.globalAlpha=1; }
+  else { cx.fillStyle='#fff2a8'; cx.beginPath(); cx.arc(820,90,38,0,7); cx.fill(); }
+  cx.fillStyle=th.cloud; for(let i=0;i<6;i++){ const x=((i*230-G.off*0.25)%(W+260)+W+260)%(W+260)-130, y=60+(i*47)%120; cx.fillRect(x,y,90,22); cx.fillRect(x+20,y-14,46,16); cx.fillRect(x+10,y+22,60,10); }
+  cx.fillStyle=th.hill2; for(let i=0;i<8;i++){ const x=((i*260-G.off*0.35)%(W+300)+W+300)%(W+300)-150; cx.beginPath(); cx.arc(x,GY+40,170,Math.PI,0); cx.fill(); }
+  cx.fillStyle=th.hill; for(let i=0;i<9;i++){ const x=((i*200+90-G.off*0.6)%(W+300)+W+300)%(W+300)-150; cx.beginPath(); cx.arc(x,GY+30,110,Math.PI,0); cx.fill(); }
+  cx.fillStyle=th.ground; cx.fillRect(0,GY,W,H-GY); cx.fillStyle=th.grass; cx.fillRect(0,GY,W,14);
+  cx.fillStyle='#00000022'; for(let i=0;i<30;i++){ const x=((i*64-G.off)%(W+64)+W+64)%(W+64)-32; cx.fillRect(x,GY+24,28,6); cx.fillRect(x+36,GY+52,20,6); }
+  for(const ob of G.obs){
+    const x=Math.round(ob.x); const ap=ob.appear===undefined?1:ob.appear; const pin=ap<1?0.4+0.6*ap:1;
+    if(ob.type==='pit'){ const pw=Math.round(ob.w*ap); cx.fillStyle='#0b0d1a'; cx.fillRect(x,GY,pw,H-GY); cx.fillStyle=th.ground; cx.fillRect(x-6,GY,6,H-GY); cx.fillRect(x+pw,GY,6,H-GY); }
+    else if(ob.type==='flag'){ cx.fillStyle='#ddd'; cx.fillRect(x,GY-150,6,150); cx.fillStyle='#ff5f6d'; cx.beginPath(); cx.moveTo(x+6,GY-150); cx.lineTo(x+56,GY-130); cx.lineTo(x+6,GY-110); cx.fill(); cx.fillStyle='#ffcc3d'; cx.beginPath(); cx.arc(x+3,GY-154,7,0,7); cx.fill(); }
+    else if(ob.type==='enemy'){ const sq=ob.squash!==undefined; cx.save(); cx.translate(x+24,GY); cx.scale(pin,sq?0.35:pin); sprite(ENEMY,-24,-36,4,{p:'#9b5de5',w:'#fff',k:'#111'}); cx.restore(); }
+    else if(ob.type==='block'){ const by=GY-130-(ob.bump>0?Math.sin(ob.bump/0.3*Math.PI)*18:0)+(1-ap)*-60; cx.globalAlpha=pin; cx.fillStyle='#d99a2b'; cx.fillRect(x,by,48,48); cx.fillStyle='#ffcc3d'; cx.fillRect(x+4,by+4,40,40); cx.fillStyle='#7a4b00'; cx.fillRect(x+4,by+4,6,6); cx.fillRect(x+38,by+4,6,6); cx.fillRect(x+4,by+38,6,6); cx.fillRect(x+38,by+38,6,6); cx.font='bold 30px Fredoka, sans-serif'; cx.textAlign='center'; cx.fillText(ob.solved?'':'?',x+24,by+36); if(ob.solved&&ob.bump>0){ cx.fillStyle='#ffe066'; cx.beginPath(); cx.arc(x+24,by-20-(0.3-ob.bump)*120,10,0,7); cx.fill(); } cx.globalAlpha=1; }
+    else if(ob.type==='star'){ const y=GY-120+Math.sin(G.t*4)*8; cx.fillStyle='#fff176'; cx.beginPath(); for(let i=0;i<10;i++){ const r=i%2?10:24, a=-Math.PI/2+i*Math.PI/5; cx.lineTo(x+24+Math.cos(a)*r,y+Math.sin(a)*r);} cx.closePath(); cx.fill(); cx.fillStyle='#111'; cx.fillRect(x+18,y-4,4,6); cx.fillRect(x+27,y-4,4,6); }
+    if(ob.text&&!ob.resolved) drawSign(ob,x+ob.w/2,ob.type==='pit'?GY-70:GY-190);
+  }
+  const hero=G.hero; if(hero){ const vis=hero.hurtT<=0||Math.floor(hero.hurtT*12)%2===0; if(vis){ const map=heroMap(hero.air||hero.fall>0?FEET_J:(G.v>5&&hero.frame?FEET_B:FEET_A)); const pal={r:'#ff5f6d',b:prof.color,w:'#fff',k:'#111',o:'#3a2a1a'}; if(hero.hurtT>0) pal.b='#ff8a93'; cx.fillStyle='#00000033'; cx.beginPath(); cx.ellipse(HX+24,GY+4,22-Math.min(12,(GY-hero.y)/8),5,0,0,7); cx.fill(); sprite(map,HX,hero.y-48,4,pal); } }
+  drawFx(); cx.restore();
+}
+function rr(x,y,w,h,r){ cx.beginPath(); cx.moveTo(x+r,y); cx.arcTo(x+w,y,x+w,y+h,r); cx.arcTo(x+w,y+h,x,y+h,r); cx.arcTo(x,y+h,x,y,r); cx.arcTo(x,y,x+w,y,r); cx.closePath(); }
+
+// Meeschalen: het hele spel vult het scherm (720p tot 4K); het canvas rendert op een hogere interne resolutie zodat tekst scherp blijft.
+let K=1;
+function fit(){
+  const app=document.getElementById('app'); app.style.zoom=1;
+  const bw=document.documentElement.clientWidth-36, bh=window.innerHeight-40;
+  const s=clamp(Math.min(bw/app.offsetWidth,bh/app.offsetHeight),0.4,4);
+  app.style.zoom=s;
+  const k=clamp(Math.ceil(s*(window.devicePixelRatio||1)),1,4);
+  if(k!==K){ K=k; cv.width=W*K; cv.height=H*K; }
+}
+window.addEventListener('resize',fit); fit(); if(document.fonts&&document.fonts.ready) document.fonts.ready.then(fit); setTimeout(fit,600);
+let lastT=0;
+function loop(ts){ const dt=Math.min(0.05,(ts-lastT)/1000||0); lastT=ts; if(G.state==='play') update(dt); cx.setTransform(K,0,0,K,0,0); if(G.hero) draw(); else drawIdle(); drawHands(); requestAnimationFrame(loop); }
+function drawIdle(){ G.t+=1/60; const saved=G.hero; G.hero={y:GY,vy:0,air:false,hurtT:0,fall:0,frame:Math.floor(G.t*6)%2,ft:0}; G.v=90; G.off+=1.5; const p=prof; if(!prof) prof={color:'#4fd1ff'}; const m=G.mode; G.mode='runner'; draw(); G.mode=m; prof=p; G.hero=saved; }
+
+load(); applyLayout(); renderKb(); renderHUD(); if(DB.muted){ document.getElementById('btnMute').style.opacity=.5; }
+// Nieuwe versie van de pagina terwijl iemand speelt: speler onthouden en terug naar de spelkeuze (voortgang staat al in de opslag).
+function boot(data){ if(data&&data.name&&DB.profiles[data.name]){ prof=DB.profiles[data.name]; showGames(); } else showMenu(); requestAnimationFrame(loop); }
+if(window.claude&&window.claude.hot&&window.claude.hot.snapshot) window.claude.hot.snapshot(()=>({name:prof&&prof.name||null}));
+(window.claude&&window.claude.hot&&window.claude.hot.ready)?window.claude.hot.ready(boot):boot((window.claude&&window.claude.hot&&window.claude.hot.data)||{});
+</script>
