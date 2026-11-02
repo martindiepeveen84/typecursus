@@ -80,10 +80,11 @@ canvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rend
 .game{background:var(--panel2);border:3px solid var(--line);border-radius:14px;padding:14px;cursor:pointer;text-align:left;color:var(--fg);box-shadow:0 4px 0 #11143a;font-family:var(--body);font-weight:400;font-size:.9rem}
 .game:hover{border-color:var(--accent)}
 .game b{display:block;font-family:var(--display);font-size:1.3rem;color:var(--accent);margin-bottom:4px}
-.game .pv{height:70px;border-radius:8px;margin-bottom:8px;background:linear-gradient(#5ec8ff 60%,#4cc24a 60% 70%,#8b5a2b 70%)}
+.game .pv{height:46px;border-radius:8px;margin-bottom:8px;background:linear-gradient(#5ec8ff 60%,#4cc24a 60% 70%,#8b5a2b 70%)}
 .game .pv.house{background:linear-gradient(#ffd9e6 0 55%,#c98b5a 55% 62%,#f7c9a6 62%)}
 .game .pv.space{background:radial-gradient(circle at 70% 40%,#6a2a7a55,transparent 50%),radial-gradient(circle at 20% 70%,#2a3a8a66,transparent 45%),linear-gradient(#05070f,#0d1430)}
-.games{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.games{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.card.games-card{max-width:680px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:14px 0}
 .stats div{background:#0d1028;border-radius:10px;padding:8px}
 .stats b{display:block;font-family:var(--display);font-size:1.4rem;color:var(--accent);font-variant-numeric:tabular-nums}
@@ -672,15 +673,16 @@ const overlay=document.getElementById('overlay'),card=document.getElementById('c
 let newColor=COLORS[0], newLevel='nieuw';
 function showMenu(){
   if(G.hero&&prof&&G.state!=='over'&&G.sessChars>=10){ recordSession(); G.sessChars=0; save(); }
-  G.state='menu'; musicStop(); overlay.hidden=false; renderPrompt(); card.classList.remove('wide');
+  G.state='menu'; musicStop(); overlay.hidden=false; renderPrompt(); card.classList.remove('wide','games-card'); G.delMode=false;
   const names=Object.keys(DB.profiles);
   card.innerHTML=`<h1>Letterloper</h1><p class="lead">Twee typ-spelletjes in het Nederlands. Je kunt niet af: elke fout maakt het spel even iets rustiger, en je krijgt een tip.</p>
   <p>Je begint met <b>f</b> en <b>j</b> en leert telkens twee toetsen erbij. Goed getypt = sneller.</p>
   ${names.length?'<p>Wie speelt er?</p>':''}<div class="profiles">${names.map(n=>{const p=DB.profiles[n];return `<button data-p="${n}"><span class="dot" style="background:${p.color}"></span><span>${n}<small>stap ${p.stage}/${GROUPS.length} · record ${p.best}</small></span></button>`;}).join('')}</div>
   <div class="newprof"><input id="newName" placeholder="Nieuwe speler" maxlength="14" autocomplete="off"><div class="swatches">${COLORS.map(c=>`<div class="sw${c===newColor?' on':''}" data-c="${c}" style="background:${c}"></div>`).join('')}</div><button id="btnNew">Verder</button></div>
   <p>Hoe goed kun je al typen?</p><div class="levels"><button class="${newLevel==='nieuw'?'on':''}" data-l="nieuw">Nog niet</button><button class="${newLevel==='beetje'?'on':''}" data-l="beetje">Een beetje</button><button class="${newLevel==='goed'?'on':''}" data-l="goed">Al best goed</button></div>
-  <div class="row" style="margin-top:18px"><button class="ghost" id="btnExp" style="font-size:.8rem;padding:6px 12px">Voortgang opslaan</button><button class="ghost" id="btnImp" style="font-size:.8rem;padding:6px 12px">Voortgang laden</button></div>`;
-  card.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{ audioInit(); prof=DB.profiles[b.dataset.p]; DB.last=prof.name; save(); showGames(); });
+  <div class="row" style="margin-top:18px">${names.length?'<button class="ghost" id="btnDel" style="font-size:.8rem;padding:6px 12px">Speler verwijderen</button>':''}<button class="ghost" id="btnExp" style="font-size:.8rem;padding:6px 12px">Voortgang opslaan</button><button class="ghost" id="btnImp" style="font-size:.8rem;padding:6px 12px">Voortgang laden</button></div>`;
+  card.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{ if(G.delMode){ confirmDelete(b.dataset.p); return; } audioInit(); prof=DB.profiles[b.dataset.p]; DB.last=prof.name; save(); showGames(); });
+  const bd=card.querySelector('#btnDel'); if(bd) bd.onclick=()=>{ G.delMode=!G.delMode; bd.textContent=G.delMode?'Klik op de speler die weg mag':'Speler verwijderen'; bd.style.background=G.delMode?'var(--bad)':''; bd.style.color=G.delMode?'#fff':''; };
   card.querySelectorAll('.sw').forEach(s=>s.onclick=()=>{ newColor=s.dataset.c; card.querySelectorAll('.sw').forEach(x=>x.classList.toggle('on',x===s)); });
   card.querySelectorAll('[data-l]').forEach(s=>s.onclick=()=>{ newLevel=s.dataset.l; card.querySelectorAll('[data-l]').forEach(x=>x.classList.toggle('on',x===s)); });
   const inp=card.querySelector('#newName'); const go=()=>{ const n=inp.value.trim(); if(!n) { inp.focus(); return; } audioInit(); if(!DB.profiles[n]) DB.profiles[n]=newProfile(n,newColor,newLevel); prof=DB.profiles[n]; DB.last=n; save(); showGames(); };
@@ -690,6 +692,7 @@ function showMenu(){
   if(('ontouchstart' in window)&&!window.matchMedia('(pointer:fine)').matches) card.insertAdjacentHTML('afterbegin','<p style="background:#0d1028;border:1px solid var(--bad);border-radius:10px;padding:8px">Dit spel heeft een echt toetsenbord nodig. Op een telefoon of tablet werkt het niet goed.</p>');
 }
 // Voortgang bewaren buiten de browser: als tekst kopiëren/plakken (werkt overal) en als bestand waar downloaden mag.
+function confirmDelete(n){ G.delMode=false; card.innerHTML=`<h2>${n} verwijderen?</h2><p>Alle voortgang, badges en statistieken van ${n} op deze computer gaan weg. Dit kan niet ongedaan worden.</p><div class="row"><button id="ok" style="background:var(--bad);color:#fff;box-shadow:0 4px 0 #8a1f2b">Ja, verwijderen</button><button class="ghost" id="bk">Nee</button></div>`; card.querySelector('#ok').onclick=()=>{ delete DB.profiles[n]; if(DB.last===n) DB.last=null; save(); toast(n+' is verwijderd'); showMenu(); }; card.querySelector('#bk').onclick=showMenu; }
 function showExport(){
   const json=JSON.stringify(DB); card.innerHTML=`<h2>Voortgang opslaan</h2><p>Kopieer deze tekst en bewaar hem (bijv. in een notitie). Op een andere computer plak je hem bij "Voortgang laden".</p><textarea id="expTxt" style="width:100%;height:120px;font-size:.7rem;background:#0d1028;color:var(--fg);border:1px solid var(--line);border-radius:8px" readonly>${json.replace(/</g,'&lt;')}</textarea><div class="row"><button id="cp">Kopiëren</button><button class="ghost" id="dl">Als bestand</button><button class="ghost" id="bk">Terug</button></div>`;
   const ta=card.querySelector('#expTxt'); card.querySelector('#cp').onclick=()=>{ ta.select(); (navigator.clipboard&&navigator.clipboard.writeText(json)||Promise.reject()).then(()=>toast('Gekopieerd')).catch(()=>{ ta.select(); toast('Selecteer en kopieer met Ctrl+C'); }); };
@@ -703,7 +706,7 @@ function showImport(){
   card.querySelector('#bk').onclick=showMenu;
 }
 function showGames(){
-  G.state='menu'; overlay.hidden=false;
+  G.state='menu'; overlay.hidden=false; card.classList.add('games-card');
   card.innerHTML=`<h2>Wat wil je spelen, ${prof.name}?</h2>
   <div class="games">
     <button class="game" data-m="runner"><div class="pv"></div><b>Letterloper</b>Ren, spring en stamp door de werelden. Typ wat er boven elk obstakel staat voordat je held er is.</button>
@@ -714,7 +717,7 @@ function showGames(){
   <p>Zonder tijd wacht alles tot je de letters hebt getypt. Je kunt dit tijdens het spel ook omzetten met de ⏱-knop.</p>
   <div class="levels"><button class="${prof.story?'on':''}" id="tStory">Verhaaltjes (zinnen, gevorderd)</button><button class="${prof.apos?'on':''}" id="tApos">Apostrof-woorden ('s avonds)</button><button id="tHero">Held: ${['pet','antenne','strik'][prof.hero||0]}</button><button class="ghost" id="tLay">Indeling: ${(DB.layout||'qwerty').toUpperCase()}</button></div>
   <div class="row"><button class="ghost" id="ana">Analyse: welke toetsen zitten erin?</button><button class="ghost" id="back">Andere speler</button></div>`;
-  card.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{ prof.mode=b.dataset.m; save(); startGame(); });
+  card.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{ card.classList.remove('games-card'); prof.mode=b.dataset.m; save(); startGame(); });
   card.querySelector('#ana').onclick=()=>showAnalysis(showGames);
   card.querySelector('#tStory').onclick=()=>{ prof.story=!prof.story; save(); showGames(); };
   card.querySelector('#tApos').onclick=()=>{ prof.apos=!prof.apos; save(); showGames(); };
